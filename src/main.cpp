@@ -155,11 +155,8 @@ int main() {
         // Right - Pixel Art (Fixed next to the menu)
         ImGui::SetNextWindowPos(ImVec2(240, 0), ImGuiCond_Always);
         ImGui::SetNextWindowSize(ImVec2(1040, 720), ImGuiCond_Always);
-        ImGui::Begin("Pixel Artwork", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse);
+        ImGui::Begin("Pixel Artwork", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar);
 
-        // Pixel Artwork Title and Modernized UI
-        ImGui::Text("Pixel Art Viewer");
-        ImGui::Separator();
 
         // Update texture if the selected image has changed
         if (!selectedImage.empty()) {
@@ -186,8 +183,6 @@ int main() {
               ImVec2(canvas.getWidth() * zoomFactor, canvas.getHeight() * zoomFactor));
             }
         }
-
-        ImGui::Text("Use the mouse to interact with the image.");
 
         ImGui::End();
 

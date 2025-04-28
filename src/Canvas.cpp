@@ -10,7 +10,6 @@ Canvas::Canvas(int width_, int height_)
 
 bool Canvas::loadFromFile(const std::string& filepath) {
     int w, h, channels;
-    stbi_set_flip_vertically_on_load(1); // << VERY IMPORTANT
     unsigned char* data = stbi_load(filepath.c_str(), &w, &h, &channels, 0);
 
     if (data == nullptr) {

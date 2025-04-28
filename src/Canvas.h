@@ -23,7 +23,7 @@ public:
     int getHeight() const { return height; }
     const std::vector<Pixel>& getData() const { return pixels; }
 
-    std::vector<unsigned char> getRGBAData() const; // << NEW METHOD
+    std::vector<unsigned char> getRGBAData() const;
 
 private:
     int width, height;
