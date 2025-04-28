@@ -3,6 +3,10 @@
 #include "imgui_impl_opengl3.h"
 #include <GLFW/glfw3.h>
 #include <iostream>
+#include <filesystem>
+#include <vector>
+#include <string>
+
 
 #include "Canvas.h"
 
@@ -20,14 +24,17 @@ GLuint createTextureFromCanvas(const Canvas &canvas) {
     glGenTextures(1, &textureID);
     glBindTexture(GL_TEXTURE_2D, textureID);
 
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, canvas.getWidth(), canvas.getHeight(), 0,
-                 GL_RGBA, GL_UNSIGNED_BYTE, canvas.getData().data());
+    std::vector<unsigned char> rgbaData = canvas.getRGBAData();
 
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, canvas.getWidth(), canvas.getHeight(), 0,
+                 GL_RGBA, GL_UNSIGNED_BYTE, rgbaData.data());
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); // important: pixel perfect
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
     return textureID;
 }
+
 
 // Apply a modern ImGui style
 void applyModernStyle() {
@@ -59,6 +66,21 @@ void applyModernStyle() {
     style.Colors[ImGuiCol_ResizeGripActive] = ImVec4(0.24f, 0.50f, 0.85f, 1.00f);
 }
 
+std::vector<std::string> getImageFilesFromDirectory(const std::string& path) {
+    std::vector<std::string> files;
+    for (const auto& entry : std::filesystem::directory_iterator(path)) {
+        if (entry.is_regular_file()) {
+            std::string filename = entry.path().filename().string();
+            // Only add .png or .jpg files
+            if (filename.ends_with(".png") || filename.ends_with(".jpg")) {
+                files.push_back(filename);
+            }
+        }
+    }
+    return files;
+}
+
+
 int main() {
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit())
@@ -88,17 +110,12 @@ int main() {
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init(glsl_version);
 
-    // Create a sample canvas
-    Canvas canvas(64, 64);
+    // Load image files from the "assets/images" folder
+    std::vector<std::string> imageFiles = getImageFilesFromDirectory("../assets/images");
+    std::sort(imageFiles.begin(), imageFiles.end());
+    std::string selectedImage = imageFiles.empty() ? "" : imageFiles[0];  // Default to first image if available
 
-    // Fill it with a sample gradient
-    for (int y = 0; y < canvas.getHeight(); ++y) {
-        for (int x = 0; x < canvas.getWidth(); ++x) {
-            canvas.setPixel(x, y, Pixel(x * 4, y * 4, 128));
-        }
-    }
-
-    const GLuint canvasTexture = createTextureFromCanvas(canvas);
+    GLuint canvasTexture = 0;
 
     // Main loop
     while (!glfwWindowShouldClose(window)) {
@@ -112,9 +129,27 @@ int main() {
         ImGui::SetNextWindowSize(ImVec2(240, 0), ImGuiCond_Always);
         ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
         ImGui::Begin("Menu", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_AlwaysAutoResize);
+
         if (ImGui::Button("Run")) {
             // Nothing yet
         }
+
+        // Dropdown for selecting images
+        if (!imageFiles.empty()) {
+            const char* currentSelection = selectedImage.c_str();
+            if (ImGui::BeginCombo("Select Image", currentSelection)) {
+                for (const auto& filename : imageFiles) {
+                    bool isSelected = (currentSelection == filename);
+                    if (ImGui::Selectable(filename.c_str(), isSelected)) {
+                        selectedImage = filename;
+                    }
+                }
+                ImGui::EndCombo();
+            }
+        } else {
+            ImGui::Text("No images available.");
+        }
+
         ImGui::End();
 
         // Right - Pixel Art (Fixed next to the menu)
@@ -126,10 +161,31 @@ int main() {
         ImGui::Text("Pixel Art Viewer");
         ImGui::Separator();
 
-        // Framed image and zoom interaction
-        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(5, 5));
-        ImGui::Image(canvasTexture, ImVec2(512, 512));
-        ImGui::PopStyleVar();
+        // Update texture if the selected image has changed
+        if (!selectedImage.empty()) {
+            std::string imagePath = "../assets/images/" + selectedImage;
+
+            static std::string lastLoadedImage = "";
+            static Canvas canvas(1, 1); // dummy initial canvas
+
+            if (selectedImage != lastLoadedImage) {
+                lastLoadedImage = selectedImage;
+                if (canvas.loadFromFile(imagePath)) {
+                    if (canvasTexture != 0) {
+                        glDeleteTextures(1, &canvasTexture);
+                    }
+                    canvasTexture = createTextureFromCanvas(canvas);
+                } else {
+                    std::cerr << "Failed to load image: " << imagePath << std::endl;
+                }
+            }
+
+            if (canvasTexture != 0) {
+                float zoomFactor = 8.0f; // << You can tweak zoom here
+                ImGui::Image((ImTextureID)(intptr_t)canvasTexture,
+              ImVec2(canvas.getWidth() * zoomFactor, canvas.getHeight() * zoomFactor));
+            }
+        }
 
         ImGui::Text("Use the mouse to interact with the image.");
 
@@ -152,6 +208,4 @@ int main() {
 
     glfwDestroyWindow(window);
     glfwTerminate();
-
-    return 0;
 }

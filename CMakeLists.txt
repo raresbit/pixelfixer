@@ -21,6 +21,7 @@ set(IMGUI_SOURCES
 set(PROJECT_SOURCES
         src/main.cpp
         src/Canvas.cpp
+        external/stb/stb_image.cpp
 )
 
 add_executable(PixelArt
@@ -32,6 +33,7 @@ target_include_directories(PixelArt PRIVATE
         src
         ${IMGUI_DIR}
         ${IMGUI_BACKENDS_DIR}
+        external/stb
 )
 
 # OpenGL
