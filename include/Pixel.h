@@ -8,6 +8,9 @@
 
 #include <cstdint>
 
+/**
+ * Data structure representing a Pixel.
+ */
 struct Pixel {
     uint8_t r, g, b;
 };

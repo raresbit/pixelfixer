@@ -43,11 +43,3 @@ target_link_libraries(PixelArt PRIVATE OpenGL::GL)
 # GLFW
 find_package(glfw3 3.3 REQUIRED)
 target_link_libraries(PixelArt PRIVATE glfw)
-
-target_link_libraries(PixelArt PRIVATE
-        "-framework Cocoa"
-        "-framework IOKit"
-        "-framework CoreFoundation"
-        "-framework CoreGraphics"
-        "-framework AppKit"
-)

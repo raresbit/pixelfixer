@@ -2,15 +2,17 @@
 // Created by Rareș Biteș on 28.04.2025.
 //
 
-#include "Canvas.h"
+#include "../include/Canvas.h"
 #include <iostream>
+#include "stb_image.h"
 
-Canvas::Canvas(int width_, int height_)
-    : width(width_), height(height_), pixels(width_ * height_) {}
+Canvas::Canvas(const int width, const int height)
+    : width(width), height(height), pixels(width * height) {
+}
 
-bool Canvas::loadFromFile(const std::string& filepath) {
+bool Canvas::loadFromFile(const std::string &filepath) {
     int w, h, channels;
-    unsigned char* data = stbi_load(filepath.c_str(), &w, &h, &channels, 0);
+    unsigned char *data = stbi_load(filepath.c_str(), &w, &h, &channels, 0);
 
     if (data == nullptr) {
         std::cerr << "Failed to load image: " << filepath << std::endl;
@@ -23,11 +25,11 @@ bool Canvas::loadFromFile(const std::string& filepath) {
 
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
-            int offset = (y * width + x) * channels;
+            int pos = (y * width + x) * channels;
 
-            unsigned char r = data[offset];
-            unsigned char g = (channels > 1) ? data[offset + 1] : r;
-            unsigned char b = (channels > 2) ? data[offset + 2] : r;
+            unsigned char r = data[pos];
+            unsigned char g = (channels > 1) ? data[pos + 1] : r;
+            unsigned char b = (channels > 2) ? data[pos + 2] : r;
 
             setPixel(x, y, Pixel(r, g, b));
         }
@@ -37,13 +39,13 @@ bool Canvas::loadFromFile(const std::string& filepath) {
     return true;
 }
 
-void Canvas::setPixel(int x, int y, Pixel p) {
+void Canvas::setPixel(const int x, const int y, Pixel p) {
     if (x < 0 || x >= width || y < 0 || y >= height) return;
     pixels[y * width + x] = p;
 }
 
-Pixel Canvas::getPixel(int x, int y) const {
-    if (x < 0 || x >= width || y < 0 || y >= height) return Pixel();
+Pixel Canvas::getPixel(const int x, const int y) const {
+    if (x < 0 || x >= width || y < 0 || y >= height) return {};
     return pixels[y * width + x];
 }
 
@@ -51,11 +53,11 @@ std::vector<unsigned char> Canvas::getRGBAData() const {
     std::vector<unsigned char> rgba;
     rgba.reserve(width * height * 4);
 
-    for (const auto& p : pixels) {
+    for (const auto &p: pixels) {
         rgba.push_back(p.r);
         rgba.push_back(p.g);
         rgba.push_back(p.b);
-        rgba.push_back(255); // Force Alpha=255
+        rgba.push_back(255);
     }
     return rgba;
 }

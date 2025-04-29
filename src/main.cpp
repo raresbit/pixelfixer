@@ -8,40 +8,25 @@
 #include <string>
 
 
-#include "Canvas.h"
+#include "../include/Canvas.h"
 
-ImFont* loadFont() {
-    ImFont* font = ImGui::GetIO().Fonts->AddFontFromFileTTF("../assets/fonts/Open_Sans/static/OpenSans-Regular.ttf", 18.0f);
-    return font;
-}
-
+/**
+ * GLFW error callback. Logs the error to the standard error stream.
+ *
+ * @param error Error code.
+ * @param description Description of the error.
+ */
 static void glfw_error_callback(int error, const char *description) {
     fprintf(stderr, "Glfw Error %d: %s\n", error, description);
 }
 
-GLuint createTextureFromCanvas(const Canvas &canvas) {
-    GLuint textureID;
-    glGenTextures(1, &textureID);
-    glBindTexture(GL_TEXTURE_2D, textureID);
-
-    std::vector<unsigned char> rgbaData = canvas.getRGBAData();
-
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, canvas.getWidth(), canvas.getHeight(), 0,
-                 GL_RGBA, GL_UNSIGNED_BYTE, rgbaData.data());
-
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); // important: pixel perfect
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-    return textureID;
-}
-
-
-// Apply a modern ImGui style
-void applyModernStyle() {
+/**
+ * Custom theme for ImGui.
+ */
+void applyTheme() {
     ImGui::StyleColorsDark();
 
-    // Modify the default style to a more modern look
-    ImGuiStyle& style = ImGui::GetStyle();
+    ImGuiStyle &style = ImGui::GetStyle();
     style.WindowRounding = 5.0f;
     style.GrabRounding = 3.0f;
     style.FrameRounding = 3.0f;
@@ -66,12 +51,28 @@ void applyModernStyle() {
     style.Colors[ImGuiCol_ResizeGripActive] = ImVec4(0.24f, 0.50f, 0.85f, 1.00f);
 }
 
-std::vector<std::string> getImageFilesFromDirectory(const std::string& path) {
+/**
+ * Loads a font for ImGui from a TTF file.
+ *
+ * @return Pointer to the loaded font, or nullptr otherwise.
+ */
+ImFont *loadFont() {
+    ImFont *font = ImGui::GetIO().Fonts->AddFontFromFileTTF("../assets/fonts/Open_Sans/static/OpenSans-Regular.ttf",
+                                                            18.0f);
+    return font;
+}
+
+/**
+ * @brief Retrieves a list of image files from a directory.
+ *
+ * @param path path to the directory.
+ * @return vector of image filenames.
+*/
+std::vector<std::string> getImageFilesFromDirectory(const std::string &path) {
     std::vector<std::string> files;
-    for (const auto& entry : std::filesystem::directory_iterator(path)) {
+    for (const auto &entry: std::filesystem::directory_iterator(path)) {
         if (entry.is_regular_file()) {
             std::string filename = entry.path().filename().string();
-            // Only add .png or .jpg files
             if (filename.ends_with(".png") || filename.ends_with(".jpg")) {
                 files.push_back(filename);
             }
@@ -80,40 +81,65 @@ std::vector<std::string> getImageFilesFromDirectory(const std::string& path) {
     return files;
 }
 
+/**
+ * Creates an OpenGL texture from a Canvas object.
+ * @param canvas the input canvas.
+ * @return The ID of the created texture.
+ */
+GLuint createTextureFromCanvas(const Canvas &canvas) {
+    GLuint textureID;
+    glGenTextures(1, &textureID);
+    glBindTexture(GL_TEXTURE_2D, textureID);
 
+    std::vector<unsigned char> rgbaData = canvas.getRGBAData();
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, canvas.getWidth(), canvas.getHeight(), 0,
+                 GL_RGBA, GL_UNSIGNED_BYTE, rgbaData.data());
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    return textureID;
+}
+
+/**
+ * Main loop of the application.
+ * @return exit code.
+ */
 int main() {
+    // Set-up GLFW
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit())
         return 1;
 
-    const char *glsl_version = "#version 150";
+    auto glsl_version = "#version 150";
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
 
-    GLFWwindow *window = glfwCreateWindow(1280, 720, "PixelArt 2.0", nullptr, nullptr);
+    GLFWwindow *window = glfwCreateWindow(720, 540, "PixelArt 2.0", nullptr, nullptr);
     if (window == nullptr)
         return 1;
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1);
 
+    // Set-up ImGUI
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO &io = ImGui::GetIO();
     (void) io;
 
-    applyModernStyle();
+    applyTheme();
 
-    // Load the modern font
-    if (ImFont* font = loadFont())
+    if (ImFont *font = loadFont())
         io.FontDefault = font;
 
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init(glsl_version);
 
-    // Load image files from the "assets/images" folder
+    // Load images
     std::vector<std::string> imageFiles = getImageFilesFromDirectory("../assets/images");
-    std::sort(imageFiles.begin(), imageFiles.end());
-    std::string selectedImage = imageFiles.empty() ? "" : imageFiles[0];  // Default to first image if available
+    std::ranges::sort(imageFiles);
+    std::string selectedImage = imageFiles.empty() ? "" : imageFiles[0];
 
     GLuint canvasTexture = 0;
 
@@ -125,21 +151,20 @@ int main() {
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
-        // Left Menu (Fixed, no overlap)
+        // Left-side menu
         ImGui::SetNextWindowSize(ImVec2(240, 0), ImGuiCond_Always);
         ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
-        ImGui::Begin("Menu", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_AlwaysAutoResize);
-
-        if (ImGui::Button("Run")) {
-            // Nothing yet
-        }
+        ImGui::Begin("Menu", nullptr,
+                     ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar |
+                     ImGuiWindowFlags_AlwaysAutoResize);
 
         // Dropdown for selecting images
         if (!imageFiles.empty()) {
-            const char* currentSelection = selectedImage.c_str();
-            if (ImGui::BeginCombo("Select Image", currentSelection)) {
-                for (const auto& filename : imageFiles) {
-                    bool isSelected = (currentSelection == filename);
+            ImGui::Text("Select Image");
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::BeginCombo("##ImageCombo", selectedImage.c_str())) {
+                for (const auto &filename: imageFiles) {
+                    bool isSelected = (selectedImage == filename);
                     if (ImGui::Selectable(filename.c_str(), isSelected)) {
                         selectedImage = filename;
                     }
@@ -150,20 +175,30 @@ int main() {
             ImGui::Text("No images available.");
         }
 
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        ImGui::Text("Run Algorithm");
+        if (ImGui::Button("Run")) {
+            // ...
+        }
+
         ImGui::End();
 
-        // Right - Pixel Art (Fixed next to the menu)
+        // Right-side menu with the displayed Pixel Art
         ImGui::SetNextWindowPos(ImVec2(240, 0), ImGuiCond_Always);
         ImGui::SetNextWindowSize(ImVec2(1040, 720), ImGuiCond_Always);
-        ImGui::Begin("Pixel Artwork", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar);
+        ImGui::Begin("Pixel Artwork", nullptr,
+                     ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
+                     ImGuiWindowFlags_NoTitleBar);
 
-
-        // Update texture if the selected image has changed
+        // Initialize canvas
         if (!selectedImage.empty()) {
             std::string imagePath = "../assets/images/" + selectedImage;
 
-            static std::string lastLoadedImage = "";
-            static Canvas canvas(1, 1); // dummy initial canvas
+            static std::string lastLoadedImage;
+            static Canvas canvas(1, 1);
 
             if (selectedImage != lastLoadedImage) {
                 lastLoadedImage = selectedImage;
@@ -176,11 +211,13 @@ int main() {
                     std::cerr << "Failed to load image: " << imagePath << std::endl;
                 }
             }
-
             if (canvasTexture != 0) {
-                float zoomFactor = 8.0f; // << You can tweak zoom here
-                ImGui::Image((ImTextureID)(intptr_t)canvasTexture,
-              ImVec2(canvas.getWidth() * zoomFactor, canvas.getHeight() * zoomFactor));
+                constexpr float zoomFactor = 8.0f;
+                const float width = zoomFactor * static_cast<float>(canvas.getWidth());
+                const float height = zoomFactor * static_cast<float>(canvas.getHeight());
+
+                ImGui::Image(static_cast<ImTextureID>(static_cast<intptr_t>(canvasTexture)),
+                             ImVec2(width, height));
             }
         }
 
@@ -203,4 +240,6 @@ int main() {
 
     glfwDestroyWindow(window);
     glfwTerminate();
+
+    return 0;
 }
