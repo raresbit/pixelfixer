@@ -39,6 +39,14 @@ bool Canvas::loadFromFile(const std::string &filepath) {
     return true;
 }
 
+void Canvas::fill(const Pixel &color) {
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            setPixel(x, y, color);
+        }
+    }
+}
+
 void Canvas::setPixel(const int x, const int y, Pixel p) {
     if (x < 0 || x >= width || y < 0 || y >= height) return;
     pixels[y * width + x] = p;

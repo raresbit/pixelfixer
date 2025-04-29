@@ -30,6 +30,12 @@ public:
     bool loadFromFile(const std::string &filepath);
 
     /**
+     * Fill the Canvas with a color.
+     * @param color The Pixel color to fill the canvas with.
+     */
+    void fill(const Pixel &color);
+
+    /**
      * Set the pixel at (x, y) given an input p
      * @param x coordinate
      * @param y coordinate

@@ -21,6 +21,7 @@ set(IMGUI_SOURCES
 set(PROJECT_SOURCES
         src/main.cpp
         src/Canvas.cpp
+        src/pixproc.cpp
         external/stb/stb_image.cpp
 )
 
