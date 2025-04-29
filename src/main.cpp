@@ -10,6 +10,7 @@
 #include "../include/Canvas.h"
 #include "../include/pixproc.h"
 
+
 static void glfw_error_callback(int error, const char *description) {
     fprintf(stderr, "Glfw Error %d: %s\n", error, description);
 }
@@ -86,6 +87,7 @@ GLFWwindow *initGLFW(const char *title, int width, int height, const char *glsl_
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
 
     GLFWwindow *window = glfwCreateWindow(width, height, title, nullptr, nullptr);
+    glfwSetWindowSizeLimits(window, 720, 540, GLFW_DONT_CARE, GLFW_DONT_CARE);
     if (!window) return nullptr;
 
     glfwMakeContextCurrent(window);
@@ -123,14 +125,14 @@ void renderLeftMenu(bool &isDrawMode, const std::vector<std::string> &imageFiles
             // Draw mode selected
             isDrawMode = true;
             canvas = Canvas(32, 32);
-            canvas.fill(Pixel(255, 255, 255));
+            canvas.fill({255, 255, 255});
             drawnPath.clear();
         } else {
             // Image mode selected
             isDrawMode = false;
 
             if (!imageFiles.empty()) {
-                selectedImage = imageFiles[0]; // Automatically select first image
+                selectedImage = imageFiles[0]; // Automatically select the first image
                 std::string imagePath = "../assets/images/" + selectedImage;
 
                 if (canvas.loadFromFile(imagePath)) {
@@ -168,10 +170,10 @@ void renderLeftMenu(bool &isDrawMode, const std::vector<std::string> &imageFiles
 
     if (ImGui::Button("Run Algorithm")) {
         std::vector<Pixel> processed = pixproc::pixelPerfect(drawnPath);
-        canvas.fill(Pixel(255, 255, 255));
+        canvas.fill({255, 255, 255});
 
         for (const auto &px: processed)
-            canvas.setPixel(px.x, px.y, Pixel(0, 0, 0));
+            canvas.setPixel({px.pos.x, px.pos.y}, {0, 0, 0});
 
         if (canvasTexture != 0)
             glDeleteTextures(1, &canvasTexture);
@@ -196,17 +198,21 @@ void renderCanvas(bool isDrawMode, const std::string &selectedImage, Canvas &can
         ImVec2 canvasSize = ImVec2(256, 256);
 
         if (mousePressed) {
-            int canvasX = (mousePos.x - canvasPos.x) * canvas.getWidth() / canvasSize.x;
-            int canvasY = (mousePos.y - canvasPos.y) * canvas.getHeight() / canvasSize.y;
+            int canvasX = static_cast<int>((mousePos.x - canvasPos.x) * static_cast<float>(canvas.getWidth()) /
+                                           canvasSize.x);
+            int canvasY = static_cast<int>((mousePos.y - canvasPos.y) * static_cast<float>(canvas.getHeight()) /
+                                           canvasSize.y);
 
             if (canvasX >= 0 && canvasX < canvas.getWidth() &&
                 canvasY >= 0 && canvasY < canvas.getHeight()) {
-                Pixel black(0, 0, 0);
-                canvas.setPixel(canvasX, canvasY, black);
+                glm::u8vec3 black{0, 0, 0};
+                canvas.setPixel({canvasX, canvasY}, black);
 
                 if (std::ranges::none_of(drawnPath,
-                                         [canvasX, canvasY](const Pixel &p) { return p.x == canvasX && p.y == canvasY; })) {
-                    drawnPath.emplace_back(black.r, black.g, black.b, canvasX, canvasY);
+                                         [canvasX, canvasY](const Pixel &p) {
+                                             return p.pos.x == canvasX && p.pos.y == canvasY;
+                                         })) {
+                    drawnPath.emplace_back(Pixel{black, {canvasX, canvasY}});
                 }
             }
         }
@@ -235,7 +241,8 @@ void renderCanvas(bool isDrawMode, const std::string &selectedImage, Canvas &can
             if (canvasTexture != 0) {
                 float zoom = 8.0f;
                 ImGui::Image(static_cast<ImTextureID>(static_cast<intptr_t>(canvasTexture)),
-                             ImVec2(canvas.getWidth() * zoom, canvas.getHeight() * zoom));
+                             ImVec2(static_cast<float>(canvas.getWidth()) * zoom,
+                                    static_cast<float>(canvas.getHeight()) * zoom));
             }
         }
     }
@@ -255,7 +262,7 @@ void runMainLoop(GLFWwindow *window) {
 
     GLuint canvasTexture = 0;
     Canvas canvas(32, 32);
-    canvas.fill(Pixel(255, 255, 255));
+    canvas.fill({255, 255, 255});
     bool isDrawMode = false;
     bool mousePressed = false;
     std::vector<Pixel> drawnPath;

@@ -17,10 +17,10 @@ namespace pixproc {
         while (c < path.size()) {
             if (
                 c > 0 && c + 1 < path.size() &&
-                (path[c - 1].x == path[c].x || path[c - 1].y == path[c].y) &&
-                (path[c + 1].x == path[c].x || path[c + 1].y == path[c].y) &&
-                (path[c - 1].x != path[c + 1].x) &&
-                (path[c - 1].y != path[c + 1].y)
+                (path[c - 1].pos.x == path[c].pos.x || path[c - 1].pos.y == path[c].pos.y) &&
+                (path[c + 1].pos.x == path[c].pos.x || path[c + 1].pos.y == path[c].pos.y) &&
+                (path[c - 1].pos.x != path[c + 1].pos.x) &&
+                (path[c - 1].pos.y != path[c + 1].pos.y)
             ) {
                 c += 1;
             }

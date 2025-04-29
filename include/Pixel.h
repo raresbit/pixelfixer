@@ -5,15 +5,16 @@
 #ifndef PIXEL_H
 #define PIXEL_H
 
+#include <glm/glm.hpp>
 
-#include <cstdint>
+#include "Common.h"
 
 /**
  * Data structure representing a Pixel.
  */
 struct Pixel {
-    uint8_t r{}, g{}, b{};
-    int x = 0, y = 0;
+    Color color;
+    Pos pos;
 };
 
 

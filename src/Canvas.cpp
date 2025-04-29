@@ -31,7 +31,7 @@ bool Canvas::loadFromFile(const std::string &filepath) {
             unsigned char g = (channels > 1) ? data[pos + 1] : r;
             unsigned char b = (channels > 2) ? data[pos + 2] : r;
 
-            setPixel(x, y, Pixel(r, g, b));
+            setPixel(glm::ivec2(x, y), glm::u8vec3(r, g, b));
         }
     }
 
@@ -39,32 +39,32 @@ bool Canvas::loadFromFile(const std::string &filepath) {
     return true;
 }
 
-void Canvas::fill(const Pixel &color) {
+void Canvas::fill(const Color &color) {
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
-            setPixel(x, y, color);
+            setPixel(Pos(x, y), color);
         }
     }
 }
 
-void Canvas::setPixel(const int x, const int y, Pixel p) {
-    if (x < 0 || x >= width || y < 0 || y >= height) return;
-    pixels[y * width + x] = p;
+void Canvas::setPixel(Pos pos, Color color) {
+    if (pos.x < 0 || pos.x >= width || pos.y < 0 || pos.y >= height) return;
+    pixels[pos.y * width + pos.x] = Pixel{{color.r, color.g, color.b}, {pos.x, pos.y}};
 }
 
-Pixel Canvas::getPixel(const int x, const int y) const {
-    if (x < 0 || x >= width || y < 0 || y >= height) return {};
-    return pixels[y * width + x];
+Pixel Canvas::getPixel(const Pos pos) const {
+    if (pos.x < 0 || pos.x >= width || pos.y < 0 || pos.y >= height) return {};
+    return pixels[pos.y * width + pos.x];
 }
 
 std::vector<unsigned char> Canvas::getRGBAData() const {
     std::vector<unsigned char> rgba;
     rgba.reserve(width * height * 4);
 
-    for (const auto &p: pixels) {
-        rgba.push_back(p.r);
-        rgba.push_back(p.g);
-        rgba.push_back(p.b);
+    for (const auto &p : pixels) {
+        rgba.push_back(p.color.r);
+        rgba.push_back(p.color.g);
+        rgba.push_back(p.color.b);
         rgba.push_back(255);
     }
     return rgba;

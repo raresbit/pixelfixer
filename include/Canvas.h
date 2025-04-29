@@ -33,23 +33,21 @@ public:
      * Fill the Canvas with a color.
      * @param color The Pixel color to fill the canvas with.
      */
-    void fill(const Pixel &color);
+    void fill(const Color &color);
 
     /**
-     * Set the pixel at (x, y) given an input p
-     * @param x coordinate
-     * @param y coordinate
-     * @param p pixel to set
+     * Set the pixel at a position pos with a color
+     * @param pos coordinates
+     * @param color color to set
      */
-    void setPixel(int x, int y, Pixel p);
+    void setPixel(Pos pos, Color color);
 
     /**
-     * Get the pixel at (x, y)
-     * @param x coordinate
-     * @param y coordinate
-     * @return pixel at (x, y)
+     * Get the pixel at a position pos
+     * @param pos the (x, y) coordinates
+     * @return pixel at position pos
      */
-    [[nodiscard]] Pixel getPixel(int x, int y) const;
+    [[nodiscard]] Pixel getPixel(Pos pos) const;
 
     /**
      * Get the Canvas width
