@@ -23,6 +23,19 @@ public:
     Canvas(int width, int height);
 
     /**
+     * Deep copy constructor for Canvas objects.
+     * @param other canvas to copy.
+     */
+    Canvas(const Canvas& other);
+
+    /**
+     * Deep copy function.
+     * @param other canvas to copy
+     * @return deep-copied canvas
+     */
+    Canvas& operator=(const Canvas& other);
+
+    /**
      * Loads an image file into the Canvas.
      * @param filepath path to the file.
      * @return true if successful, otherwise false.
@@ -62,20 +75,31 @@ public:
     [[nodiscard]] int getHeight() const { return height; }
 
     /**
-     * Get the pixels of the Canvas
-     * @return a vector of Pixel
-     */
-    [[nodiscard]] const std::vector<Pixel> &getData() const { return pixels; }
-
-    /**
      * Returns the pixels as a vector of RGBA bytes, so that we can use it in OpenGL functions.
      * @return a vector of the RGBA bytes
      */
     [[nodiscard]] std::vector<unsigned char> getRGBAData() const;
 
+    /**
+     * Creates a new debug layer on top of the canvas
+     */
+    void setDebugPixel(Pos pos, Color color);
+
+    /**
+     * Removes the debug layer at a certain index
+     */
+    void clearDebugPixels();
+
+    /**
+     * Save the canvas to a file
+     */
+    bool saveToFile(const std::string &filepath) const;
+
+
 private:
     int width, height;
     std::vector<Pixel> pixels;
+    std::vector<std::optional<Pixel>> debugPixels;
 };
 
 #endif // CANVAS_H

@@ -6,10 +6,12 @@
 #include <filesystem>
 #include <vector>
 #include <string>
+#include <sstream>
 
 #include "../include/Canvas.h"
-#include "../include/pixproc.h"
-
+#include "../include/AlgorithmModule.h"
+#include "../include/BandingCorrection.h"
+#include "../include/SubjectDetection.h"
 
 static void glfw_error_callback(int error, const char *description) {
     fprintf(stderr, "Glfw Error %d: %s\n", error, description);
@@ -24,9 +26,9 @@ void applyTheme() {
     style.ChildRounding = 5.0f;
     style.PopupRounding = 5.0f;
     style.ScrollbarRounding = 5.0f;
-    style.Colors[ImGuiCol_Header] = ImVec4(0.29f, 0.55f, 0.90f, 1.00f);
-    style.Colors[ImGuiCol_HeaderHovered] = ImVec4(0.34f, 0.60f, 0.95f, 1.00f);
-    style.Colors[ImGuiCol_HeaderActive] = ImVec4(0.24f, 0.50f, 0.85f, 1.00f);
+    style.Colors[ImGuiCol_Header] = ImVec4(0.5f, 0.5f, 0.5f, 1.00f); // Gray color
+    style.Colors[ImGuiCol_HeaderHovered] = ImVec4(0.6f, 0.6f, 0.6f, 1.00f); // Lighter gray when hovered
+    style.Colors[ImGuiCol_HeaderActive] = ImVec4(0.4f, 0.4f, 0.4f, 1.00f); // Slightly darker gray when active
     style.Colors[ImGuiCol_Button] = ImVec4(0.29f, 0.55f, 0.90f, 1.00f);
     style.Colors[ImGuiCol_ButtonHovered] = ImVec4(0.34f, 0.60f, 0.95f, 1.00f);
     style.Colors[ImGuiCol_ButtonActive] = ImVec4(0.24f, 0.50f, 0.85f, 1.00f);
@@ -48,6 +50,39 @@ ImFont *loadFont() {
     return font;
 }
 
+ImFont *loadHeaderFont() {
+    ImFont *font = ImGui::GetIO().Fonts->AddFontFromFileTTF("../assets/fonts/Open_Sans/static/OpenSans-Regular.ttf",
+                                                            24.0f);
+    return font;
+}
+
+bool natural_compare(const std::string& a, const std::string& b) {
+    size_t i = 0, j = 0;
+    while (i < a.size() && j < b.size()) {
+        // Skip non-digit characters
+        if (!std::isdigit(a[i]) && !std::isdigit(b[j])) {
+            if (a[i] != b[j]) return a[i] < b[j];
+            ++i; ++j;
+        } else {
+            // Extract numbers from both strings
+            size_t num_end_a = i, num_end_b = j;
+            while (num_end_a < a.size() && std::isdigit(a[num_end_a])) ++num_end_a;
+            while (num_end_b < b.size() && std::isdigit(b[num_end_b])) ++num_end_b;
+
+            // Compare the extracted numbers
+            int num_a = std::stoi(a.substr(i, num_end_a - i));
+            int num_b = std::stoi(b.substr(j, num_end_b - j));
+
+            if (num_a != num_b) return num_a < num_b;
+
+            // Move past the number
+            i = num_end_a;
+            j = num_end_b;
+        }
+    }
+    return a.size() < b.size();
+}
+
 std::vector<std::string> getImageFilesFromDirectory(const std::string &path) {
     std::vector<std::string> files;
     for (const auto &entry: std::filesystem::directory_iterator(path)) {
@@ -58,8 +93,11 @@ std::vector<std::string> getImageFilesFromDirectory(const std::string &path) {
             }
         }
     }
+    std::ranges::sort(files, natural_compare);
+
     return files;
 }
+
 
 GLuint createTextureFromCanvas(const Canvas &canvas) {
     GLuint textureID;
@@ -87,7 +125,7 @@ GLFWwindow *initGLFW(const char *title, int width, int height, const char *glsl_
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
 
     GLFWwindow *window = glfwCreateWindow(width, height, title, nullptr, nullptr);
-    glfwSetWindowSizeLimits(window, 720, 540, GLFW_DONT_CARE, GLFW_DONT_CARE);
+    glfwSetWindowSizeLimits(window, 720, 540, 720, 540);
     if (!window) return nullptr;
 
     glfwMakeContextCurrent(window);
@@ -109,12 +147,47 @@ void initImGui(GLFWwindow *window, const char *glsl_version, ImFont *&defaultFon
     ImGui_ImplOpenGL3_Init(glsl_version);
 }
 
-void renderLeftMenu(bool &isDrawMode, const std::vector<std::string> &imageFiles, std::string &selectedImage,
-                    Canvas &canvas, GLuint &canvasTexture, std::vector<Pixel> &drawnPath) {
+std::string getExportPath() {
+    std::filesystem::path base = std::filesystem::current_path();
+    std::filesystem::path assetPath = base / ".." / "exports" / "canvas_export.png";
+    return std::filesystem::absolute(assetPath).string();
+}
+
+std::string getUniqueFilePath(const std::string& basePath) {
+    namespace fs = std::filesystem;
+
+    fs::path path(basePath);
+    fs::path directory = path.parent_path();
+    std::string stem = path.stem().string();   // e.g., "canvas_export"
+    std::string extension = path.extension().string(); // e.g., ".png"
+
+    int counter = 1;
+    fs::path uniquePath = path;
+
+    while (fs::exists(uniquePath)) {
+        std::ostringstream oss;
+        oss << stem << " (" << counter++ << ")" << extension;
+        uniquePath = directory / oss.str();
+    }
+
+    return uniquePath.string();
+}
+
+
+void renderLeftMenu(bool &isDrawMode, const std::vector<std::string> &imageFiles,
+                    std::string &selectedImage, GLuint &canvasTexture, Canvas &canvas,
+                    std::vector<Pixel> &drawnPath,
+                    const std::vector<std::unique_ptr<AlgorithmModule> > &algorithms,
+                    ImFont *headerFont) {
     ImGui::SetNextWindowSize(ImVec2(240, 0), ImGuiCond_Always);
     ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
     ImGui::Begin("Menu", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
                                   ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_AlwaysAutoResize);
+
+    if (headerFont) ImGui::PushFont(headerFont);
+    ImGui::Text("Set-Up");
+    if (headerFont) ImGui::PopFont();
+    ImGui::Spacing();
 
     ImGui::Text("Select Mode");
     int mode = isDrawMode ? 0 : 1;
@@ -124,9 +197,11 @@ void renderLeftMenu(bool &isDrawMode, const std::vector<std::string> &imageFiles
         if (mode == 0) {
             // Draw mode selected
             isDrawMode = true;
-            canvas = Canvas(32, 32);
             canvas.fill({255, 255, 255});
             drawnPath.clear();
+            for (auto &algo: algorithms) {
+                if (algo) algo->reset();
+            }
         } else {
             // Image mode selected
             isDrawMode = false;
@@ -166,26 +241,75 @@ void renderLeftMenu(bool &isDrawMode, const std::vector<std::string> &imageFiles
 
     ImGui::Spacing();
     ImGui::Separator();
-    ImGui::Spacing();
+    if (headerFont) ImGui::PushFont(headerFont);
+    ImGui::Text("Algorithms");
+    if (headerFont) ImGui::PopFont();
 
-    if (ImGui::Button("Run Algorithm")) {
-        std::vector<Pixel> processed = pixproc::pixelPerfect(drawnPath);
-        canvas.fill({255, 255, 255});
+    for (const auto &algo: algorithms) {
+        ImGui::PushID(algo->name().c_str());
+        ImGui::Spacing();
 
-        for (const auto &px: processed)
-            canvas.setPixel({px.pos.x, px.pos.y}, {0, 0, 0});
+        ImGui::Text("%s:", algo->name().c_str());
 
+        ImGui::SameLine();
+
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0, 0));
+        ImVec2 buttonSize(40, 20);
+        if (ImGui::Button("Run", buttonSize)) {
+            algo->run();
+        }
+        ImGui::PopStyleVar();
+
+        ImGui::Spacing();
+
+        if (ImGui::TreeNode("Settings")) {
+            algo->renderUI();
+            ImGui::TreePop();
+        }
+
+        if (ImGui::TreeNode("Visual Debug"))
+        {
+            algo->renderDebugUI();
+            ImGui::TreePop();
+        }
+
+
+        // Refresh texture after debug drawing, if needed
         if (canvasTexture != 0)
             glDeleteTextures(1, &canvasTexture);
-
         canvasTexture = createTextureFromCanvas(canvas);
+
+        ImGui::PopID();
+        ImGui::Spacing();
+        ImGui::Separator();
+    }
+
+    if (headerFont) ImGui::PushFont(headerFont);
+    ImGui::Text("Export");
+    if (headerFont) ImGui::PopFont();
+
+    static double saveMessageTime = -1.0f;
+    static bool saveSuccess = false;
+
+    if (ImGui::Button("Save to Desktop")) {
+        std::string path = getExportPath();
+        std::string uniquePath = getUniqueFilePath(path);
+        saveSuccess = canvas.saveToFile(uniquePath);
+        saveMessageTime = ImGui::GetTime();
+    }
+
+    if (saveMessageTime >= 0.0f && ImGui::GetTime() - saveMessageTime < 2.0f) {
+        ImVec4 color = saveSuccess ? ImVec4(0.2f, 1.0f, 0.2f, 1.0f) : ImVec4(1.0f, 0.2f, 0.2f, 1.0f);
+        const char* message = saveSuccess ? "Canvas saved successfully!" : "Failed to save canvas.";
+        ImGui::TextColored(color, "%s", message);
     }
 
     ImGui::End();
 }
 
-void renderCanvas(bool isDrawMode, const std::string &selectedImage, Canvas &canvas, GLuint &canvasTexture,
-                  std::vector<Pixel> &drawnPath, bool &mousePressed) {
+void renderCanvas(bool isDrawMode, const std::string &selectedImage, GLuint &canvasTexture, Canvas &canvas,
+                  std::vector<Pixel> &drawnPath, bool &mousePressed,
+                  const std::vector<std::unique_ptr<AlgorithmModule> > &algorithms) {
     ImGui::SetNextWindowPos(ImVec2(240, 0), ImGuiCond_Always);
     ImGui::SetNextWindowSize(ImVec2(1040, 720), ImGuiCond_Always);
     ImGui::Begin("Pixel Artwork", nullptr,
@@ -205,7 +329,7 @@ void renderCanvas(bool isDrawMode, const std::string &selectedImage, Canvas &can
 
             if (canvasX >= 0 && canvasX < canvas.getWidth() &&
                 canvasY >= 0 && canvasY < canvas.getHeight()) {
-                glm::u8vec3 black{0, 0, 0};
+                Color black{0, 0, 0};
                 canvas.setPixel({canvasX, canvasY}, black);
 
                 if (std::ranges::none_of(drawnPath,
@@ -233,6 +357,10 @@ void renderCanvas(bool isDrawMode, const std::string &selectedImage, Canvas &can
                     if (canvasTexture != 0)
                         glDeleteTextures(1, &canvasTexture);
                     canvasTexture = createTextureFromCanvas(canvas);
+
+                    for (auto &algo: algorithms) {
+                        if (algo) algo->reset();
+                    }
                 } else {
                     std::cerr << "Failed to load image: " << path << std::endl;
                 }
@@ -250,22 +378,30 @@ void renderCanvas(bool isDrawMode, const std::string &selectedImage, Canvas &can
     ImGui::End();
 }
 
+std::vector<std::unique_ptr<AlgorithmModule> > loadAlgorithms(Canvas &canvas) {
+    std::vector<std::unique_ptr<AlgorithmModule> > algos;
+    algos.emplace_back(std::make_unique<SubjectDetection>(canvas));
+    algos.emplace_back(std::make_unique<BandingCorrection>(canvas));
+    return algos;
+}
+
 // --- Main Application Loop ---
 void runMainLoop(GLFWwindow *window) {
     const char *glsl_version = "#version 150";
     ImFont *defaultFont = nullptr;
     initImGui(window, glsl_version, defaultFont);
-
+    ImFont *headerFont = ImGui::GetIO().Fonts->AddFontFromFileTTF("../assets/fonts/Open_Sans/static/OpenSans-Bold.ttf",
+                                                                  24.0f);
     std::vector<std::string> imageFiles = getImageFilesFromDirectory("../assets/images");
-    std::ranges::sort(imageFiles);
     std::string selectedImage = imageFiles.empty() ? "" : imageFiles[0];
 
+    Canvas canvas = Canvas(32, 32);
     GLuint canvasTexture = 0;
-    Canvas canvas(32, 32);
     canvas.fill({255, 255, 255});
     bool isDrawMode = false;
     bool mousePressed = false;
     std::vector<Pixel> drawnPath;
+    const auto algorithms = loadAlgorithms(canvas);
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
@@ -273,8 +409,9 @@ void runMainLoop(GLFWwindow *window) {
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
-        renderLeftMenu(isDrawMode, imageFiles, selectedImage, canvas, canvasTexture, drawnPath);
-        renderCanvas(isDrawMode, selectedImage, canvas, canvasTexture, drawnPath, mousePressed);
+        renderCanvas(isDrawMode, selectedImage, canvasTexture, canvas, drawnPath, mousePressed, algorithms);
+        renderLeftMenu(isDrawMode, imageFiles, selectedImage, canvasTexture, canvas,
+                       drawnPath, algorithms, headerFont);
 
         ImGui::Render();
         int display_w, display_h;

@@ -4,10 +4,25 @@
 
 #include "../include/Canvas.h"
 #include <iostream>
+#include <ranges>
 #include "stb_image.h"
+#include "stb_image_write.h"
 
 Canvas::Canvas(const int width, const int height)
-    : width(width), height(height), pixels(width * height) {
+    : width(width), height(height), pixels(width * height), debugPixels(width * height) {
+}
+
+Canvas::Canvas(const Canvas &other) = default;
+
+Canvas &Canvas::operator=(const Canvas &other) {
+    if (this == &other) return *this;
+
+    width = other.width;
+    height = other.height;
+    pixels = other.pixels;
+    debugPixels = other.debugPixels;
+
+    return *this;
 }
 
 bool Canvas::loadFromFile(const std::string &filepath) {
@@ -22,6 +37,8 @@ bool Canvas::loadFromFile(const std::string &filepath) {
     width = w;
     height = h;
     pixels.resize(width * height);
+    clearDebugPixels();
+    debugPixels.resize(width * height);
 
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
@@ -54,18 +71,44 @@ void Canvas::setPixel(Pos pos, Color color) {
 
 Pixel Canvas::getPixel(const Pos pos) const {
     if (pos.x < 0 || pos.x >= width || pos.y < 0 || pos.y >= height) return {};
-    return pixels[pos.y * width + pos.x];
+
+    int index = pos.y * width + pos.x;
+
+    if (debugPixels[index].has_value()) {
+        return debugPixels[index].value();
+    }
+
+    return pixels[index];
 }
+
 
 std::vector<unsigned char> Canvas::getRGBAData() const {
     std::vector<unsigned char> rgba;
     rgba.reserve(width * height * 4);
 
-    for (const auto &p : pixels) {
-        rgba.push_back(p.color.r);
-        rgba.push_back(p.color.g);
-        rgba.push_back(p.color.b);
-        rgba.push_back(255);
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            Pixel p = getPixel(Pos(x, y));
+            rgba.push_back(p.color.r);
+            rgba.push_back(p.color.g);
+            rgba.push_back(p.color.b);
+            rgba.push_back(255);
+        }
     }
+
     return rgba;
+}
+
+void Canvas::setDebugPixel(Pos pos, Color color) {
+    if (pos.x < 0 || pos.x >= width || pos.y < 0 || pos.y >= height) return;
+    debugPixels[pos.y * width + pos.x] = Pixel{{color.r, color.g, color.b}, {pos.x, pos.y}};
+}
+
+void Canvas::clearDebugPixels() {
+    std::ranges::fill(debugPixels, std::nullopt);
+}
+
+bool Canvas::saveToFile(const std::string &filepath) const {
+    std::vector<unsigned char> rgba = getRGBAData();
+    return stbi_write_png(filepath.c_str(), width, height, 4, rgba.data(), width * 4) != 0;
 }

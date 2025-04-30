@@ -3,7 +3,6 @@ project(PixelArt LANGUAGES C CXX OBJC)
 
 set(CMAKE_CXX_STANDARD 20)
 
-
 # ImGUI
 set(IMGUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/imgui)
 set(IMGUI_BACKENDS_DIR ${IMGUI_DIR}/backends)
@@ -21,8 +20,7 @@ set(IMGUI_SOURCES
 set(PROJECT_SOURCES
         src/main.cpp
         src/Canvas.cpp
-        src/pixproc.cpp
-        external/stb/stb_image.cpp
+        external/stb/stb.cpp
 )
 
 add_executable(PixelArt
@@ -40,6 +38,11 @@ target_include_directories(PixelArt PRIVATE
 # OpenGL
 find_package(OpenGL REQUIRED)
 target_link_libraries(PixelArt PRIVATE OpenGL::GL)
+
+# OpenCV
+find_package(OpenCV REQUIRED)
+target_link_libraries(PixelArt PRIVATE ${OpenCV_LIBS})
+include_directories(${OpenCV_INCLUDE_DIRS})
 
 # GLM
 find_package(glm CONFIG REQUIRED)
