@@ -37,4 +37,4 @@ idea/
 # MacOS
 .DS_Store
 /assets/images/
-/assets/exports/
+/exports/

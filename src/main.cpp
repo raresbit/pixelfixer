@@ -149,8 +149,15 @@ void initImGui(GLFWwindow *window, const char *glsl_version, ImFont *&defaultFon
 
 std::string getExportPath() {
     std::filesystem::path base = std::filesystem::current_path();
-    std::filesystem::path assetPath = base / ".." / "exports" / "canvas_export.png";
-    return std::filesystem::absolute(assetPath).string();
+
+    std::filesystem::path exportPath = base / ".." / "exports";
+
+    if (!std::filesystem::exists(exportPath)) {
+        std::filesystem::create_directory(exportPath);
+    }
+
+    std::filesystem::path filePath = exportPath / "canvas_export.png";
+    return std::filesystem::absolute(filePath).string();
 }
 
 std::string getUniqueFilePath(const std::string& basePath) {
