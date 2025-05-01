@@ -302,7 +302,7 @@ void renderLeftMenu(bool &isDrawMode, const std::vector<std::string> &imageFiles
     static double saveMessageTime = -1.0f;
     static bool saveSuccess = false;
 
-    if (ImGui::Button("Save to Desktop")) {
+    if (ImGui::Button("Save to \"exports\"")) {
         std::string path = getExportPath();
         std::string uniquePath = getUniqueFilePath(path);
         saveSuccess = canvas.saveToFile(uniquePath);
