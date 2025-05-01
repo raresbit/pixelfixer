@@ -218,6 +218,10 @@ void renderLeftMenu(bool &isDrawMode, const std::vector<std::string> &imageFiles
                 std::string imagePath = "../assets/images/" + selectedImage;
 
                 if (canvas.loadFromFile(imagePath)) {
+                    for (auto &algo: algorithms) {
+                        if (algo) algo->reset();
+                    }
+
                     if (canvasTexture != 0) {
                         glDeleteTextures(1, &canvasTexture);
                     }
