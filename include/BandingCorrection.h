@@ -79,10 +79,15 @@ public:
     }
 
     void renderUI() override {
-        ImGui::Text("ExpandShape Iterations");
+        ImGui::Text("Shape Expansion Iterations");
         ImGui::SetNextItemWidth(-FLT_MIN);
         ImGui::SliderInt("##ExpandShape Iterations", &expandIterations, 0, 10);
+
+        ImGui::Text("Probability to Add Pixel");
+        ImGui::SetNextItemWidth(-FLT_MIN);
+        ImGui::SliderFloat("##ProbabilityToAddPixel", &probabilityToAddPixel, 0.0f, 1.0f, "%.3f");
     }
+
 
 
 private:
