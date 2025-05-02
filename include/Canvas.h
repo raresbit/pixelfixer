@@ -83,12 +83,17 @@ public:
     /**
      * Creates a new debug layer on top of the canvas
      */
-    void setDebugPixel(Pos pos, Color color);
+    void setProcessedPixel(Pos pos, Color color);
+
+    /**
+     * Sets the processed pixels based on an existing canvas
+     */
+    void setProcessedPixels(const Canvas& other);
 
     /**
      * Removes the debug layer at a certain index
      */
-    void clearDebugPixels();
+    void clearProcessedPixels();
 
     /**
      * Save the canvas to a file
@@ -99,7 +104,7 @@ public:
 private:
     int width, height;
     std::vector<Pixel> pixels;
-    std::vector<std::optional<Pixel>> debugPixels;
+    std::vector<std::optional<Pixel>> processedPixels;
 };
 
 #endif // CANVAS_H

@@ -9,7 +9,7 @@
 #include "stb_image_write.h"
 
 Canvas::Canvas(const int width, const int height)
-    : width(width), height(height), pixels(width * height), debugPixels(width * height) {
+    : width(width), height(height), pixels(width * height), processedPixels(width * height) {
 }
 
 Canvas::Canvas(const Canvas &other) = default;
@@ -20,9 +20,17 @@ Canvas &Canvas::operator=(const Canvas &other) {
     width = other.width;
     height = other.height;
     pixels = other.pixels;
-    debugPixels = other.debugPixels;
+    processedPixels = other.processedPixels;
 
     return *this;
+}
+
+void Canvas::setProcessedPixels(const Canvas& other) {
+    for (int y = 0; y < other.getHeight(); ++y) {
+        for (int x = 0; x < other.getWidth(); ++x) {
+            this->setProcessedPixel({x, y}, other.getPixel({x, y}).color);
+        }
+    }
 }
 
 bool Canvas::loadFromFile(const std::string &filepath) {
@@ -37,8 +45,8 @@ bool Canvas::loadFromFile(const std::string &filepath) {
     width = w;
     height = h;
     pixels.resize(width * height);
-    clearDebugPixels();
-    debugPixels.resize(width * height);
+    clearProcessedPixels();
+    processedPixels.resize(width * height);
 
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
@@ -74,8 +82,8 @@ Pixel Canvas::getPixel(const Pos pos) const {
 
     int index = pos.y * width + pos.x;
 
-    if (debugPixels[index].has_value()) {
-        return debugPixels[index].value();
+    if (processedPixels[index].has_value()) {
+        return processedPixels[index].value();
     }
 
     return pixels[index];
@@ -99,13 +107,13 @@ std::vector<unsigned char> Canvas::getRGBAData() const {
     return rgba;
 }
 
-void Canvas::setDebugPixel(Pos pos, Color color) {
+void Canvas::setProcessedPixel(Pos pos, Color color) {
     if (pos.x < 0 || pos.x >= width || pos.y < 0 || pos.y >= height) return;
-    debugPixels[pos.y * width + pos.x] = Pixel{{color.r, color.g, color.b}, {pos.x, pos.y}};
+    processedPixels[pos.y * width + pos.x] = Pixel{{color.r, color.g, color.b}, {pos.x, pos.y}};
 }
 
-void Canvas::clearDebugPixels() {
-    std::ranges::fill(debugPixels, std::nullopt);
+void Canvas::clearProcessedPixels() {
+    std::ranges::fill(processedPixels, std::nullopt);
 }
 
 bool Canvas::saveToFile(const std::string &filepath) const {

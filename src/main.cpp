@@ -11,7 +11,6 @@
 #include "../include/Canvas.h"
 #include "../include/AlgorithmModule.h"
 #include "../include/BandingCorrection.h"
-#include "../include/SubjectDetection.h"
 
 static void glfw_error_callback(int error, const char *description) {
     fprintf(stderr, "Glfw Error %d: %s\n", error, description);
@@ -267,13 +266,14 @@ void renderLeftMenu(bool &isDrawMode, const std::vector<std::string> &imageFiles
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0, 0));
         ImVec2 buttonSize(40, 20);
         if (ImGui::Button("Run", buttonSize)) {
+            algo->reset();
             algo->run();
         }
         ImGui::PopStyleVar();
 
         ImGui::Spacing();
 
-        if (ImGui::TreeNode("Settings")) {
+        if (ImGui::TreeNode("Options")) {
             algo->renderUI();
             ImGui::TreePop();
         }
@@ -391,7 +391,6 @@ void renderCanvas(bool isDrawMode, const std::string &selectedImage, GLuint &can
 
 std::vector<std::unique_ptr<AlgorithmModule> > loadAlgorithms(Canvas &canvas) {
     std::vector<std::unique_ptr<AlgorithmModule> > algos;
-    algos.emplace_back(std::make_unique<SubjectDetection>(canvas));
     algos.emplace_back(std::make_unique<BandingCorrection>(canvas));
     return algos;
 }

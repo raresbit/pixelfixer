@@ -21,12 +21,14 @@ public:
     }
     virtual void run() = 0;
     virtual void renderUI() {
-        ImGui::Text("No settings to modify.");
+        ImGui::Text("No options to modify.");
     }
     virtual void renderDebugUI() {
         ImGui::Text("Not implemented.");
     }
-    virtual void reset() {}
+    virtual void reset() {
+        getCanvas().clearProcessedPixels();
+    }
 private:
     Canvas& canvas;
 };
