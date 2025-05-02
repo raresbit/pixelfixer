@@ -21,7 +21,7 @@ public:
     }
     virtual void run() = 0;
     virtual void renderUI() {
-        ImGui::Text("No options to modify.");
+        ImGui::Text("No options available.");
     }
     virtual void renderDebugUI() {
         ImGui::Text("Not implemented.");

@@ -262,18 +262,26 @@ void renderLeftMenu(bool &isDrawMode, const std::vector<std::string> &imageFiles
         ImGui::Text("%s:", algo->name().c_str());
 
         ImGui::SameLine();
-
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0, 0));
         ImVec2 buttonSize(40, 20);
         if (ImGui::Button("Run", buttonSize)) {
             algo->reset();
             algo->run();
         }
+        ImGui::SameLine();
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.5f, 0.5f, 0.5f, 1.0f));           // Normal
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.6f, 0.6f, 0.6f, 1.0f));    // Hovered
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.4f, 0.4f, 0.4f, 1.0f));     // Pressed
+
+        if (ImGui::Button("Reset", buttonSize)) {
+            algo->reset();
+        }
+        ImGui::PopStyleColor(3);
         ImGui::PopStyleVar();
 
         ImGui::Spacing();
 
-        if (ImGui::TreeNode("Options")) {
+        if (ImGui::TreeNode("User Options")) {
             algo->renderUI();
             ImGui::TreePop();
         }
@@ -450,7 +458,7 @@ void cleanup(GLFWwindow *window) {
 // --- Main ---
 int main() {
     const char *glsl_version = "#version 150";
-    GLFWwindow *window = initGLFW("PixelArt 2.0", 720, 540, glsl_version);
+    GLFWwindow *window = initGLFW("Pixel Fixer", 720, 540, glsl_version);
     if (!window) return 1;
 
     runMainLoop(window);
