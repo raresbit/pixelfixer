@@ -71,7 +71,9 @@ public:
 
             for (int y = 0; y < height; ++y)
                 for (int x = 0; x < width; ++x)
-                    if (modified.at<uchar>(y, x))
+                    // Paint the modified pixels of the layer
+                    // Do not add pixels outside the outline of the subject
+                    if (modified.at<uchar>(y, x) && layers[0].second.at<uchar>(y, x))
                         correctedCanvas.setProcessedPixel({x, y}, color);
         }
 
