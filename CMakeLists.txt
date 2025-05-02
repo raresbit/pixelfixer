@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.31)
-project(PixelArt LANGUAGES C CXX OBJC)
+project(PixelFixer LANGUAGES C CXX OBJC)
 
 set(CMAKE_CXX_STANDARD 20)
 
@@ -23,12 +23,12 @@ set(PROJECT_SOURCES
         external/stb/stb.cpp
 )
 
-add_executable(PixelArt
+add_executable(PixelFixer
         ${PROJECT_SOURCES}
         ${IMGUI_SOURCES}
 )
 
-target_include_directories(PixelArt PRIVATE
+target_include_directories(PixelFixer PRIVATE
         src
         ${IMGUI_DIR}
         ${IMGUI_BACKENDS_DIR}
@@ -37,17 +37,17 @@ target_include_directories(PixelArt PRIVATE
 
 # OpenGL
 find_package(OpenGL REQUIRED)
-target_link_libraries(PixelArt PRIVATE OpenGL::GL)
+target_link_libraries(PixelFixer PRIVATE OpenGL::GL)
 
 # OpenCV
 find_package(OpenCV REQUIRED)
-target_link_libraries(PixelArt PRIVATE ${OpenCV_LIBS})
+target_link_libraries(PixelFixer PRIVATE ${OpenCV_LIBS})
 include_directories(${OpenCV_INCLUDE_DIRS})
 
 # GLM
 find_package(glm CONFIG REQUIRED)
-target_link_libraries(PixelArt PRIVATE glm::glm)
+target_link_libraries(PixelFixer PRIVATE glm::glm)
 
 # GLFW
 find_package(glfw3 3.3 REQUIRED)
-target_link_libraries(PixelArt PRIVATE glfw)
+target_link_libraries(PixelFixer PRIVATE glfw)
