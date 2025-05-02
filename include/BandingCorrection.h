@@ -158,15 +158,30 @@ private:
             }
 
             std::uniform_real_distribution<double> dist(0.0, 1.0);
-            std::unordered_set<std::pair<int, int>> new_pixels;
 
+            // First pass: probabilistic addition
             for (const auto& [pt, count] : candidate_counts) {
-                if (count >= 4 || (count == 3 && dist(generator) < probabilityToAddPixel)) {
-                    new_pixels.insert(pt);
+                if (count == 3 && dist(generator) < probabilityToAddPixel) {
+                    shape.insert(pt); // Add directly to shape
                 }
             }
 
-            shape.insert(new_pixels.begin(), new_pixels.end());
+            // Recompute candidate counts
+            candidate_counts.clear();
+            for (const auto& pt : shape) {
+                for (const auto& [dx, dy] : neighbors_8) {
+                    auto neighbor = std::make_pair(pt.first + dx, pt.second + dy);
+                    if (!shape.contains(neighbor))
+                        candidate_counts[neighbor]++;
+                }
+            }
+
+            // Second pass: deterministic addition
+            for (const auto& [pt, count] : candidate_counts) {
+                if (count >= 4) {
+                    shape.insert(pt);
+                }
+            }
         }
 
         cv::Mat result(input_shape.size(), CV_8UC1, cv::Scalar(0));
