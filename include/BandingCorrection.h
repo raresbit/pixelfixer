@@ -94,7 +94,7 @@ public:
 
 private:
     Canvas originalCanvas = Canvas(0, 0);
-    std::default_random_engine generator;
+    std::default_random_engine generator{42}; // Seed for reproducibility
 
     static std::vector<std::pair<Color, cv::Mat>> extract_layers(const Canvas& canvas) {
         int width = canvas.getWidth();
