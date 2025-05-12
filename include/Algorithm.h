@@ -2,17 +2,17 @@
 // Created by Rareș Biteș on 30.04.2025.
 //
 
-#ifndef ALGORITHMMODULE_H
-#define ALGORITHMMODULE_H
+#ifndef ALGORITHM_H
+#define ALGORITHM_H
 
 #pragma once
 #include "Canvas.h"
 #include <string>
 
-class AlgorithmModule {
+class Algorithm {
 public:
-    virtual ~AlgorithmModule() = default;
-    explicit AlgorithmModule(Canvas& canvasToSet) : canvas(canvasToSet) {}
+    virtual ~Algorithm() = default;
+    explicit Algorithm(Canvas& canvasToSet) : canvas(canvasToSet) {}
 
     [[nodiscard]] virtual std::string name() const = 0;
 
@@ -28,10 +28,11 @@ public:
     }
     virtual void reset() {
         getCanvas().clearProcessedPixels();
+        getCanvas().clearDebugPixels();
     }
 private:
     Canvas& canvas;
 };
 
 
-#endif //ALGORITHMMODULE_H
+#endif //ALGORITHM_H

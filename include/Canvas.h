@@ -81,7 +81,7 @@ public:
     [[nodiscard]] std::vector<unsigned char> getRGBAData() const;
 
     /**
-     * Creates a new debug layer on top of the canvas
+     * Sets a pixel on the canvas' processed layer
      */
     void setProcessedPixel(Pos pos, Color color);
 
@@ -91,20 +91,43 @@ public:
     void setProcessedPixels(const Canvas& other);
 
     /**
-     * Removes the debug layer at a certain index
+     * Clears the processed layer
      */
     void clearProcessedPixels();
 
     /**
+     * Sets a pixel on the canvas' debug layer
+     */
+    void setDebugPixel(Pos pos, Color color);
+
+    /**
+     * Sets the debug pixels based on an existing canvas
+     */
+    void setDebugPixels(const Canvas& other);
+
+    /**
+     * Clears the debug layer
+     */
+    void clearDebugPixels();
+
+    void addDebugLine(glm::vec2 start, glm::vec2 end, Color color);
+    [[nodiscard]] const std::vector<std::tuple<glm::vec2, glm::vec2, Color>>& getDebugLines() const;
+    void clearDebugLines();
+
+
+    /**
      * Save the canvas to a file
      */
-    bool saveToFile(const std::string &filepath) const;
+    [[nodiscard]] bool saveToFile(const std::string &filepath) const;
 
 
 private:
     int width, height;
     std::vector<Pixel> pixels;
     std::vector<std::optional<Pixel>> processedPixels;
+    std::vector<std::optional<Pixel>> debugPixels;
+    std::vector<std::tuple<glm::vec2, glm::vec2, Color>> debugLines;
+
 };
 
 #endif // CANVAS_H

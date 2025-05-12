@@ -9,7 +9,7 @@
 #include "stb_image_write.h"
 
 Canvas::Canvas(const int width, const int height)
-    : width(width), height(height), pixels(width * height), processedPixels(width * height) {
+    : width(width), height(height), pixels(width * height), processedPixels(width * height), debugPixels(width * height) {
 }
 
 Canvas::Canvas(const Canvas &other) = default;
@@ -21,16 +21,9 @@ Canvas &Canvas::operator=(const Canvas &other) {
     height = other.height;
     pixels = other.pixels;
     processedPixels = other.processedPixels;
+    debugPixels = other.debugPixels;
 
     return *this;
-}
-
-void Canvas::setProcessedPixels(const Canvas& other) {
-    for (int y = 0; y < other.getHeight(); ++y) {
-        for (int x = 0; x < other.getWidth(); ++x) {
-            this->setProcessedPixel({x, y}, other.getPixel({x, y}).color);
-        }
-    }
 }
 
 bool Canvas::loadFromFile(const std::string &filepath) {
@@ -47,6 +40,8 @@ bool Canvas::loadFromFile(const std::string &filepath) {
     pixels.resize(width * height);
     clearProcessedPixels();
     processedPixels.resize(width * height);
+    clearDebugPixels();
+    debugPixels.resize(width * height);
 
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
@@ -82,6 +77,10 @@ Pixel Canvas::getPixel(const Pos pos) const {
 
     int index = pos.y * width + pos.x;
 
+    if (debugPixels[index].has_value()) {
+        return debugPixels[index].value();
+    }
+
     if (processedPixels[index].has_value()) {
         return processedPixels[index].value();
     }
@@ -112,9 +111,47 @@ void Canvas::setProcessedPixel(Pos pos, Color color) {
     processedPixels[pos.y * width + pos.x] = Pixel{{color.r, color.g, color.b}, {pos.x, pos.y}};
 }
 
+void Canvas::setProcessedPixels(const Canvas& other) {
+    for (int y = 0; y < other.getHeight(); ++y) {
+        for (int x = 0; x < other.getWidth(); ++x) {
+            this->setProcessedPixel({x, y}, other.getPixel({x, y}).color);
+        }
+    }
+}
+
 void Canvas::clearProcessedPixels() {
     std::ranges::fill(processedPixels, std::nullopt);
 }
+
+void Canvas::setDebugPixel(Pos pos, Color color) {
+    if (pos.x < 0 || pos.x >= width || pos.y < 0 || pos.y >= height) return;
+    debugPixels[pos.y * width + pos.x] = Pixel{{color.r, color.g, color.b}, {pos.x, pos.y}};
+}
+
+void Canvas::setDebugPixels(const Canvas& other) {
+    for (int y = 0; y < other.getHeight(); ++y) {
+        for (int x = 0; x < other.getWidth(); ++x) {
+            this->setDebugPixel({x, y}, other.getPixel({x, y}).color);
+        }
+    }
+}
+
+void Canvas::clearDebugPixels() {
+    std::ranges::fill(debugPixels, std::nullopt);
+}
+
+void Canvas::addDebugLine(glm::vec2 start, glm::vec2 end, Color color) {
+    debugLines.emplace_back(start, end, color);
+}
+
+const std::vector<std::tuple<glm::vec2, glm::vec2, Color>>& Canvas::getDebugLines() const {
+    return debugLines;
+}
+
+void Canvas::clearDebugLines() {
+    debugLines.clear();
+}
+
 
 bool Canvas::saveToFile(const std::string &filepath) const {
     std::vector<unsigned char> rgba = getRGBAData();

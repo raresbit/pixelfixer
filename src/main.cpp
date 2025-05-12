@@ -9,8 +9,9 @@
 #include <sstream>
 
 #include "../include/Canvas.h"
-#include "../include/AlgorithmModule.h"
+#include "../include/Algorithm.h"
 #include "../include/BandingCorrection.h"
+#include "../include/BandingDetection.h"
 
 static void glfw_error_callback(int error, const char *description) {
     fprintf(stderr, "Glfw Error %d: %s\n", error, description);
@@ -183,7 +184,7 @@ std::string getUniqueFilePath(const std::string& basePath) {
 void renderLeftMenu(bool &isDrawMode, const std::vector<std::string> &imageFiles,
                     std::string &selectedImage, GLuint &canvasTexture, Canvas &canvas,
                     std::vector<Pixel> &drawnPath,
-                    const std::vector<std::unique_ptr<AlgorithmModule> > &algorithms,
+                    const std::vector<std::unique_ptr<Algorithm> > &algorithms,
                     ImFont *headerFont) {
     ImGui::SetNextWindowSize(ImVec2(240, 0), ImGuiCond_Always);
     ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
@@ -328,7 +329,7 @@ void renderLeftMenu(bool &isDrawMode, const std::vector<std::string> &imageFiles
 
 void renderCanvas(bool isDrawMode, const std::string &selectedImage, GLuint &canvasTexture, Canvas &canvas,
                   std::vector<Pixel> &drawnPath, bool &mousePressed,
-                  const std::vector<std::unique_ptr<AlgorithmModule> > &algorithms) {
+                  const std::vector<std::unique_ptr<Algorithm> > &algorithms) {
     ImGui::SetNextWindowPos(ImVec2(240, 0), ImGuiCond_Always);
     ImGui::SetNextWindowSize(ImVec2(1040, 720), ImGuiCond_Always);
     ImGui::Begin("Pixel Artwork", nullptr,
@@ -387,19 +388,37 @@ void renderCanvas(bool isDrawMode, const std::string &selectedImage, GLuint &can
 
             if (canvasTexture != 0) {
                 float zoom = 8.0f;
+                ImVec2 canvas_pos = ImGui::GetCursorScreenPos(); // Get position before rendering image
+
                 ImGui::Image(static_cast<ImTextureID>(static_cast<intptr_t>(canvasTexture)),
                              ImVec2(static_cast<float>(canvas.getWidth()) * zoom,
                                     static_cast<float>(canvas.getHeight()) * zoom));
+
+                // Draw debug lines using ImGui overlay draw list
+                ImDrawList* draw_list = ImGui::GetWindowDrawList();
+
+                // Adjust this offset as needed
+                const float lineOffset = 4.0f;  // Move lines down a little, to align with the pixels
+
+                for (const auto& [start, end, color] : canvas.getDebugLines()) {
+                    ImVec2 p1 = ImVec2(canvas_pos.x + start.x * zoom, canvas_pos.y + start.y * zoom + lineOffset);
+                    ImVec2 p2 = ImVec2(canvas_pos.x + end.x * zoom, canvas_pos.y + end.y * zoom + lineOffset);
+
+                    ImU32 imColor = IM_COL32(color.r, color.g, color.b, 255);
+                    draw_list->AddLine(p1, p2, imColor, 1.5f);
+                }
             }
+
         }
     }
 
     ImGui::End();
 }
 
-std::vector<std::unique_ptr<AlgorithmModule> > loadAlgorithms(Canvas &canvas) {
-    std::vector<std::unique_ptr<AlgorithmModule> > algos;
+std::vector<std::unique_ptr<Algorithm> > loadAlgorithms(Canvas &canvas) {
+    std::vector<std::unique_ptr<Algorithm> > algos;
     algos.emplace_back(std::make_unique<BandingCorrection>(canvas));
+    algos.emplace_back(std::make_unique<BandingDetection>(canvas));
     return algos;
 }
 
