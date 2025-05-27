@@ -2,8 +2,8 @@
 // Created by Rareș Biteș on 30.04.2025.
 //
 
-#ifndef BANDINGCORRECTION_H
-#define BANDINGCORRECTION_H
+#ifndef PILLOWSHADINGCORRECTION_H
+#define PILLOWSHADINGCORRECTION_H
 
 #pragma once
 #include "Algorithm.h"
@@ -28,55 +28,17 @@ struct std::hash<std::pair<int, int> > {
     }
 };
 
-class BandingCorrection final : public Algorithm {
+class PillowShadingCorrection final : public Algorithm {
 public:
-    explicit BandingCorrection(Canvas &canvas) : Algorithm(canvas) {
+    explicit PillowShadingCorrection(Canvas &canvas) : Algorithm(canvas) {
     }
-
-    float probabilityToAddPixel = 0.3f;
 
     [[nodiscard]] std::string name() const override {
-        return "Banding Correction";
-    }
-
-    void construct_corrected_canvas(int width, int height, std::vector<std::pair<Color, cv::Mat>> layers, Canvas& correctedCanvas) {
-        // Fill in using white background
-        correctedCanvas.fill({255, 255, 255});
-
-        // Fill in the subject outline and its first layer by default on this new canvas.
-        for (size_t i = 0; i < 2; ++i) {
-            auto &[color, currentMask] = layers[i];
-            for (int y = 0; y < height; ++y)
-                for (int x = 0; x < width; ++x)
-                    if (currentMask.at<uchar>(y, x))
-                        correctedCanvas.setPixel({x, y}, color);
-        }
-
-        for (size_t i = 2; i < layers.size(); ++i) {
-            auto &[color, currentMask] = layers[i];
-
-            cv::Mat modified;
-            cv::Mat kernel = cv::Mat::ones(3, 3, CV_8UC1);
-            cv::erode(currentMask, modified, kernel, cv::Point(-1, -1), i);
-
-            // Store eroded layer before expansion for debug view
-            debugLayers.push_back(layers[i].second);
-            std::unordered_set<std::pair<int, int> > neighbors;
-            expandShape(modified, &neighbors, 3);
-            debugNeighborCandidates.push_back(std::move(neighbors));
-
-
-            for (int y = 0; y < height; ++y)
-                for (int x = 0; x < width; ++x)
-                    // Paint the modified pixels of the layer
-                    // Do not add pixels outside the outline of the subject
-                    if (modified.at<uchar>(y, x) && layers[0].second.at<uchar>(y, x))
-                        correctedCanvas.setPixel({x, y}, color);
-        }
+        return "Pillow-Shading Correction";
     }
 
     void run() override {
-        Canvas& canvas = getCanvas();
+        Canvas &canvas = getCanvas();
         int width = canvas.getWidth();
         int height = canvas.getHeight();
 
@@ -90,23 +52,22 @@ public:
         // Create a blank Canvas for the processed (resulting) picture
         auto error = 9999999;
         auto bestCorrectedCanvas = Canvas(width, height);
-        auto bestBandingLines = std::vector<std::tuple<int, int, int>>();
-        for (int i = 0; i < 1000; ++i) {
-            Canvas correctedCanvas(width, height);
+        auto bestBandingLines = std::vector<std::tuple<int, int, int> >();
+        // for (int i = 0; i < 1000; ++i) {
+        Canvas correctedCanvas(width, height);
 
-            construct_corrected_canvas(width, height, layers, correctedCanvas);
+        construct_corrected_canvas(width, height, layers, correctedCanvas);
 
-            auto algo = std::make_unique<BandingDetection>(correctedCanvas);
-            auto bandingLines = std::vector<std::tuple<int, int, int>>();
+        auto algo = std::make_unique<BandingDetection>(correctedCanvas);
+        auto bandingLines = std::vector<std::tuple<int, int, int> >();
 
-            algo->setThreshold(100);
-            algo->detectBandingLines(correctedCanvas, bandingLines);
-            if (bandingLines.size() < error) {
-                bestCorrectedCanvas = correctedCanvas;
-                bestBandingLines = bandingLines;
-                error = bandingLines.size();
-            }
+        // algo->detectBandingLines(correctedCanvas, bandingLines);
+        if (bandingLines.size() < error) {
+            bestCorrectedCanvas = correctedCanvas;
+            bestBandingLines = bandingLines;
+            error = bandingLines.size();
         }
+        // }
 
         canvas.setProcessedPixels(bestCorrectedCanvas);
         canvas.clearDebugLines();
@@ -128,6 +89,23 @@ public:
     }
 
     void renderUI() override {
+        // Combo to select erosion mode
+        const char *erosionModes[] = {"Constant Erosion Iterations", "Linear Erosion Iterations (On Layer #)"};
+        ImGui::SetNextItemWidth(-FLT_MIN);
+        ImGui::Combo("##Erosion Mode", &erosionMode, erosionModes, IM_ARRAYSIZE(erosionModes));
+
+        // Show slider for linear erosion factor only if linear erosion is selected
+        if (erosionMode == 1) {
+            ImGui::Text("Linear Erosion Factor");
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            ImGui::SliderFloat("##LinearErosionFactor", &linearErosionFactor, 0.0f, 1.0f, "%.3f");
+        }
+
+        ImGui::Text("# Of Expansion Iterations");
+        ImGui::SetNextItemWidth(-FLT_MIN);
+        ImGui::SliderInt("##ExpansionIterations", &expansionIterations, 0, 5);
+
+
         ImGui::Text("Probability to Add Pixel");
         ImGui::SetNextItemWidth(-FLT_MIN);
         ImGui::SliderFloat("##ProbabilityToAddPixel", &probabilityToAddPixel, 0.0f, 1.0f, "%.3f");
@@ -190,6 +168,92 @@ private:
     int selectedLayer = 0;
     std::vector<std::unordered_set<std::pair<int, int> > > debugNeighborCandidates;
     bool showNeighborCandidates = false;
+    int erosionMode = 0; // 0 = constant, 1 = linear
+    float linearErosionFactor = 1.0f; // Default factor
+    int expansionIterations = 1;
+    float probabilityToAddPixel = 0.3f;
+
+    void construct_corrected_canvas(int width, int height, std::vector<std::pair<Color, cv::Mat> > layers,
+                                    Canvas &correctedCanvas) {
+        // Fill in using white background
+        correctedCanvas.fill({255, 255, 255});
+
+        // Fill in the subject outline and its first layer by default on this new canvas.
+        for (size_t i = 0; i < 2; ++i) {
+            auto &[color, currentMask] = layers[i];
+            for (int y = 0; y < height; ++y)
+                for (int x = 0; x < width; ++x)
+                    if (currentMask.at<uchar>(y, x))
+                        correctedCanvas.setPixel({x, y}, color);
+        }
+
+        // Retrieve the first debug pixel ("generator") if it exists
+        std::optional<Pixel> dp = getCanvas().getGenerator();
+        std::optional<Pixel> generator = std::nullopt;
+        if (dp.has_value())
+            generator = dp;
+
+
+        for (size_t i = 2; i < layers.size(); ++i) {
+            auto &[color, currentMask] = layers[i];
+            cv::Mat translatedMask = cv::Mat::zeros(height, width, CV_8UC1);
+
+            if (generator.has_value()) {
+                // Compute the center of the currentMask
+                int minX = width, minY = height, maxX = 0, maxY = 0;
+                for (int y = 0; y < height; ++y)
+                    for (int x = 0; x < width; ++x)
+                        if (currentMask.at<uchar>(y, x)) {
+                            minX = std::min(minX, x);
+                            minY = std::min(minY, y);
+                            maxX = std::max(maxX, x);
+                            maxY = std::max(maxY, y);
+                        }
+
+                int centerX = (minX + maxX) / 2;
+                int centerY = (minY + maxY) / 2;
+
+                int dx = generator->pos.x - centerX;
+                int dy = generator->pos.y - centerY;
+
+                for (int y = 0; y < height; ++y)
+                    for (int x = 0; x < width; ++x)
+                        if (currentMask.at<uchar>(y, x)) {
+                            float attenuation = 1.0f / (static_cast<float>(layers.size()) - i);
+                            int newX = x + dx * attenuation;
+                            int newY = y + dy * attenuation;
+                            if (newX >= 0 && newX < width && newY >= 0 && newY < height)
+                                translatedMask.at<uchar>(newY, newX) = 255;
+                        }
+            } else {
+                // No generator: use the original mask
+                translatedMask = currentMask;
+            }
+
+            cv::Mat modified;
+            cv::Mat kernel = cv::Mat::ones(3, 3, CV_8UC1);
+            if (erosionMode == 0) {
+                // Constant erosion
+                cv::erode(translatedMask, modified, kernel, cv::Point(-1, -1), 1);
+            } else {
+                // Linear erosion
+                cv::erode(translatedMask, modified, kernel, cv::Point(-1, -1), static_cast<int>(linearErosionFactor * i));
+            }
+
+            // Store eroded layer before expansion for debug view
+            debugLayers.push_back(translatedMask);
+            std::unordered_set<std::pair<int, int> > neighbors;
+            expandShape(modified, &neighbors, expansionIterations);
+            debugNeighborCandidates.push_back(std::move(neighbors));
+
+            for (int y = 0; y < height; ++y)
+                for (int x = 0; x < width; ++x)
+                    // Paint the modified pixels of the layer
+                    // Do not add pixels outside the outline of the subject
+                    if (modified.at<uchar>(y, x) && layers[1].second.at<uchar>(y, x))
+                        correctedCanvas.setPixel({x, y}, color);
+        }
+    }
 
 
     static std::vector<std::pair<Color, cv::Mat> > extract_layers(const Canvas &canvas) {
@@ -230,6 +294,9 @@ private:
 
     void expandShape(cv::Mat &input_shape, std::unordered_set<std::pair<int, int> > *out_candidate_neighbors = nullptr,
                      int iterations = 1) {
+
+        if (iterations == 0) return;
+
         std::vector<std::pair<int, int> > neighbors = {
             {-1, -1}, {-1, 0}, {-1, 1},
             {0, -1}, {0, 1},
@@ -296,7 +363,7 @@ private:
 
             // Convert shape back to binary image
             cv::Mat temp(input_shape.size(), CV_8UC1, cv::Scalar(0));
-            for (const auto &[x, y] : shape) {
+            for (const auto &[x, y]: shape) {
                 if (x >= 0 && x < input_shape.cols && y >= 0 && y < input_shape.rows)
                     temp.at<uchar>(y, x) = 255;
             }
@@ -341,4 +408,4 @@ private:
     }
 };
 
-#endif // BANDINGCORRECTION_H
+#endif // PILLOWSHADINGCORRECTION_H

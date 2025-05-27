@@ -19,6 +19,10 @@ using Pos   = glm::ivec2;
 struct Pixel {
     Color color;
     Pos pos;
+
+    bool operator==(const Pixel& other) const {
+        return color == other.color && pos == other.pos;
+    }
 };
 
 template <>

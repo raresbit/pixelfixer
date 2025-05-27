@@ -10,8 +10,10 @@
 
 #include "../include/Canvas.h"
 #include "../include/Algorithm.h"
-#include "../include/BandingCorrection.h"
+#include "../include/PillowShadingCorrection.h"
+#include "../include/Dithering.h"
 #include "../include/BandingDetection.h"
+#include "../include/GeneralBandingCorrection.h"
 
 static void glfw_error_callback(int error, const char *description) {
     fprintf(stderr, "Glfw Error %d: %s\n", error, description);
@@ -196,15 +198,14 @@ void renderLeftMenu(bool &isDrawMode, const std::vector<std::string> &imageFiles
     if (headerFont) ImGui::PopFont();
     ImGui::Spacing();
 
-    ImGui::Text("Select Mode");
+    ImGui::Text("Mode");
     int mode = isDrawMode ? 0 : 1;
-    const char *modes[] = {"Draw", "Image"};
+    const char *modes[] = {"Annotate", "Select Segments"};
     ImGui::SetNextItemWidth(-FLT_MIN);
     if (ImGui::Combo("##ModeSelector", &mode, modes, IM_ARRAYSIZE(modes))) {
         if (mode == 0) {
             // Draw mode selected
             isDrawMode = true;
-            canvas.fill({255, 255, 255});
             drawnPath.clear();
             for (auto &algo: algorithms) {
                 if (algo) algo->reset();
@@ -234,20 +235,18 @@ void renderLeftMenu(bool &isDrawMode, const std::vector<std::string> &imageFiles
     }
 
 
-    if (!isDrawMode) {
-        if (!imageFiles.empty()) {
-            ImGui::Text("Select Image");
-            ImGui::SetNextItemWidth(-FLT_MIN);
-            if (ImGui::BeginCombo("##ImageCombo", selectedImage.c_str())) {
-                for (const auto &filename: imageFiles) {
-                    if (ImGui::Selectable(filename.c_str(), selectedImage == filename))
-                        selectedImage = filename;
-                }
-                ImGui::EndCombo();
+    if (!imageFiles.empty()) {
+        ImGui::Text("Select Image");
+        ImGui::SetNextItemWidth(-FLT_MIN);
+        if (ImGui::BeginCombo("##ImageCombo", selectedImage.c_str())) {
+            for (const auto &filename: imageFiles) {
+                if (ImGui::Selectable(filename.c_str(), selectedImage == filename))
+                    selectedImage = filename;
             }
-        } else {
-            ImGui::Text("No images available.");
+            ImGui::EndCombo();
         }
+    } else {
+        ImGui::Text("No images available.");
     }
 
     ImGui::Spacing();
@@ -262,7 +261,8 @@ void renderLeftMenu(bool &isDrawMode, const std::vector<std::string> &imageFiles
 
         ImGui::Text("%s:", algo->name().c_str());
 
-        ImGui::SameLine();
+        float indentSpacing = 6;
+        ImGui::Indent(indentSpacing);
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0, 0));
         ImVec2 buttonSize(40, 20);
         if (ImGui::Button("Run", buttonSize)) {
@@ -279,6 +279,7 @@ void renderLeftMenu(bool &isDrawMode, const std::vector<std::string> &imageFiles
         }
         ImGui::PopStyleColor(3);
         ImGui::PopStyleVar();
+        ImGui::Unindent(indentSpacing);
 
         ImGui::Spacing();
 
@@ -329,34 +330,59 @@ void renderLeftMenu(bool &isDrawMode, const std::vector<std::string> &imageFiles
 
 void renderCanvas(bool isDrawMode, const std::string &selectedImage, GLuint &canvasTexture, Canvas &canvas,
                   std::vector<Pixel> &drawnPath, bool &mousePressed,
-                  const std::vector<std::unique_ptr<Algorithm> > &algorithms) {
+                  const std::vector<std::unique_ptr<Algorithm> > &algorithms,
+                  float& zoom) {
     ImGui::SetNextWindowPos(ImVec2(240, 0), ImGuiCond_Always);
-    ImGui::SetNextWindowSize(ImVec2(1040, 720), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(480, 470), ImGuiCond_Always);
     ImGui::Begin("Pixel Artwork", nullptr,
                  ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
                  ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar);
 
+    static std::string lastLoadedImage;
+    if (selectedImage != lastLoadedImage) {
+        lastLoadedImage = selectedImage;
+        std::string path = "../assets/images/" + selectedImage;
+        if (canvas.loadFromFile(path)) {
+            if (canvasTexture != 0)
+                glDeleteTextures(1, &canvasTexture);
+            canvasTexture = createTextureFromCanvas(canvas);
+
+            for (auto &algo: algorithms) {
+                if (algo) algo->reset();
+            }
+        } else {
+            std::cerr << "Failed to load image: " << path << std::endl;
+        }
+    }
+
     if (isDrawMode) {
+        ImVec2 canvas_pos = ImGui::GetCursorScreenPos(); // Get position before rendering image
+
+        // Hover effect - Check if the mouse is over a cluster
         ImVec2 mousePos = ImGui::GetMousePos();
-        ImVec2 canvasPos = ImGui::GetCursorScreenPos();
-        ImVec2 canvasSize = ImVec2(256, 256);
+        ImVec2 relativeMousePos = ImVec2(
+            (mousePos.x - canvas_pos.x) / zoom,
+            (mousePos.y - canvas_pos.y) / zoom
+        );
 
         if (mousePressed) {
-            int canvasX = static_cast<int>((mousePos.x - canvasPos.x) * static_cast<float>(canvas.getWidth()) /
-                                           canvasSize.x);
-            int canvasY = static_cast<int>((mousePos.y - canvasPos.y) * static_cast<float>(canvas.getHeight()) /
-                                           canvasSize.y);
+            int canvasX = static_cast<int>(relativeMousePos.x);
+            int canvasY = static_cast<int>(relativeMousePos.y);
 
             if (canvasX >= 0 && canvasX < canvas.getWidth() &&
                 canvasY >= 0 && canvasY < canvas.getHeight()) {
-                Color black{0, 0, 0};
-                canvas.setPixel({canvasX, canvasY}, black);
 
                 if (std::ranges::none_of(drawnPath,
                                          [canvasX, canvasY](const Pixel &p) {
                                              return p.pos.x == canvasX && p.pos.y == canvasY;
                                          })) {
-                    drawnPath.emplace_back(Pixel{black, {canvasX, canvasY}});
+                    // Uncomment this to allow drawing paths, not single pixels
+                    // drawnPath.emplace_back(Pixel{{255, 0, 0}, {canvasX, canvasY}});
+
+                    // Set the generator
+                    canvas.setGenerator(Pixel{{255, 0, 0}, {canvasX, canvasY}});
+                    canvas.clearDebugPixels();
+                    canvas.setDebugPixel({canvasX, canvasY}, {255, 0, 0});
                 }
             }
         }
@@ -366,39 +392,77 @@ void renderCanvas(bool isDrawMode, const std::string &selectedImage, GLuint &can
 
         if (canvasTexture != 0) glDeleteTextures(1, &canvasTexture);
         canvasTexture = createTextureFromCanvas(canvas);
-        ImGui::Image(static_cast<ImTextureID>(static_cast<intptr_t>(canvasTexture)), canvasSize);
+        ImGui::Image(static_cast<ImTextureID>(static_cast<intptr_t>(canvasTexture)),
+                             ImVec2(static_cast<float>(canvas.getWidth()) * zoom,
+                                    static_cast<float>(canvas.getHeight()) * zoom));
+
+        const float lineOffset = 0.5f * zoom;
+        ImDrawList* draw_list = ImGui::GetWindowDrawList();
+
+        for (const auto& [start, end, color] : canvas.getDebugLines()) {
+            ImVec2 p1 = ImVec2(canvas_pos.x + start.x * zoom, canvas_pos.y + start.y * zoom + lineOffset);
+            ImVec2 p2 = ImVec2(canvas_pos.x + end.x * zoom, canvas_pos.y + end.y * zoom + lineOffset);
+
+            ImU32 imColor = IM_COL32(color.r, color.g, color.b, 255);
+            draw_list->AddLine(p1, p2, imColor, 1.5f);
+        }
+
     } else {
         if (!selectedImage.empty()) {
-            static std::string lastLoadedImage;
-            if (selectedImage != lastLoadedImage) {
-                lastLoadedImage = selectedImage;
-                std::string path = "../assets/images/" + selectedImage;
-                if (canvas.loadFromFile(path)) {
-                    if (canvasTexture != 0)
-                        glDeleteTextures(1, &canvasTexture);
-                    canvasTexture = createTextureFromCanvas(canvas);
-
-                    for (auto &algo: algorithms) {
-                        if (algo) algo->reset();
-                    }
-                } else {
-                    std::cerr << "Failed to load image: " << path << std::endl;
-                }
-            }
-
             if (canvasTexture != 0) {
-                float zoom = 8.0f;
                 ImVec2 canvas_pos = ImGui::GetCursorScreenPos(); // Get position before rendering image
 
+                // Zoomed canvas image
                 ImGui::Image(static_cast<ImTextureID>(static_cast<intptr_t>(canvasTexture)),
                              ImVec2(static_cast<float>(canvas.getWidth()) * zoom,
                                     static_cast<float>(canvas.getHeight()) * zoom));
 
-                // Draw debug lines using ImGui overlay draw list
+                // Highlight clusters on hover (in red color)
                 ImDrawList* draw_list = ImGui::GetWindowDrawList();
+                const float lineOffset = 0.5f * zoom;  // Adjust this offset as needed for line rendering
 
-                // Adjust this offset as needed
-                const float lineOffset = 4.0f;  // Move lines down a little, to align with the pixels
+                // Hover effect - Check if the mouse is over a cluster
+                ImVec2 mousePos = ImGui::GetMousePos();
+                ImVec2 relativeMousePos = ImVec2(
+                    (mousePos.x - canvas_pos.x) / zoom,
+                    (mousePos.y - canvas_pos.y) / zoom
+                );
+
+                for (auto& cluster : canvas.getClusters()) {
+                    for (auto& segment : cluster) {
+                        for (auto& pixel : segment) {
+                            ImVec2 pixelPos = ImVec2(pixel.pos.x, pixel.pos.y);
+                            float dist = sqrtf(powf(relativeMousePos.x - pixelPos.x, 2.0f) + powf(relativeMousePos.y - pixelPos.y, 2.0f));
+
+                            if (dist < 0.6f) {
+                                // Left-click to select or deselect this cluster
+                                if (ImGui::IsMouseClicked(0)) {
+                                    if (canvas.getSelectedSegment() == segment)
+                                        canvas.clearSelectedSegment(); // Deselect
+                                    else {
+                                        canvas.setSelectedSegment(segment); // Select
+                                    }
+                                }
+
+                                // Draw hovered cluster in red (even if it's not selected)
+                                for (auto& p : segment) {
+                                    ImVec2 p1 = ImVec2(canvas_pos.x + p.pos.x * zoom + lineOffset, canvas_pos.y + p.pos.y * zoom + lineOffset);
+                                    draw_list->AddCircle(p1, 3.0f, IM_COL32(255, 0, 0, 255), 12);
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (canvas.getSelectedSegment().size() > 0) {
+                    for (const auto& p : canvas.getSelectedSegment()) {
+                        ImVec2 p1 = ImVec2(canvas_pos.x + p.pos.x * zoom + lineOffset, canvas_pos.y + p.pos.y * zoom + lineOffset);
+                        draw_list->AddCircle(p1, 3.0f, IM_COL32(0, 255, 0, 255), 12);
+                    }
+                }
+
+
 
                 for (const auto& [start, end, color] : canvas.getDebugLines()) {
                     ImVec2 p1 = ImVec2(canvas_pos.x + start.x * zoom, canvas_pos.y + start.y * zoom + lineOffset);
@@ -408,19 +472,34 @@ void renderCanvas(bool isDrawMode, const std::string &selectedImage, GLuint &can
                     draw_list->AddLine(p1, p2, imColor, 1.5f);
                 }
             }
-
         }
     }
 
-    ImGui::End();
+    // Move the zoom slider to the bottom of the window
+    ImGui::End(); // Close the canvas window before adding the slider at the bottom
+
+    // Create a new window just for the slider at the bottom
+    ImGui::SetNextWindowPos(ImVec2(240, 470), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(480, 70), ImGuiCond_Always); // Height of the slider window
+    ImGui::Begin("Zoom Controls", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+                                      ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar);
+
+    ImGui::Text("Zoom:"); // Label for the zoom slider
+    ImGui::SetNextItemWidth(-FLT_MIN);
+    ImGui::SliderFloat("##ZoomSlider", &zoom, 1.0f, 20.0f, "%.1fx"); // The zoom slider
+
+    ImGui::End(); // End the slider window
 }
 
 std::vector<std::unique_ptr<Algorithm> > loadAlgorithms(Canvas &canvas) {
     std::vector<std::unique_ptr<Algorithm> > algos;
-    algos.emplace_back(std::make_unique<BandingCorrection>(canvas));
+    algos.emplace_back(std::make_unique<PillowShadingCorrection>(canvas));
+    algos.emplace_back(std::make_unique<Dithering>(canvas));
+    algos.emplace_back(std::make_unique<GeneralBandingCorrection>(canvas));
     algos.emplace_back(std::make_unique<BandingDetection>(canvas));
     return algos;
 }
+
 
 // --- Main Application Loop ---
 void runMainLoop(GLFWwindow *window) {
@@ -437,8 +516,9 @@ void runMainLoop(GLFWwindow *window) {
     canvas.fill({255, 255, 255});
     bool isDrawMode = false;
     bool mousePressed = false;
+    float zoom = 8.0f;
     std::vector<Pixel> drawnPath;
-    const auto algorithms = loadAlgorithms(canvas);
+    auto algorithms = loadAlgorithms(canvas);
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
@@ -446,9 +526,8 @@ void runMainLoop(GLFWwindow *window) {
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
-        renderCanvas(isDrawMode, selectedImage, canvasTexture, canvas, drawnPath, mousePressed, algorithms);
-        renderLeftMenu(isDrawMode, imageFiles, selectedImage, canvasTexture, canvas,
-                       drawnPath, algorithms, headerFont);
+        renderCanvas(isDrawMode, selectedImage, canvasTexture, canvas, drawnPath, mousePressed, algorithms, zoom);
+        renderLeftMenu(isDrawMode, imageFiles, selectedImage, canvasTexture, canvas, drawnPath, algorithms, headerFont);
 
         ImGui::Render();
         int display_w, display_h;

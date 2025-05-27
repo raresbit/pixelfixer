@@ -8,6 +8,7 @@
 #include "Pixel.h"
 #include <vector>
 #include <string>
+#include <opencv2/core/mat.hpp>
 
 /**
  * @class Canvas
@@ -26,14 +27,14 @@ public:
      * Deep copy constructor for Canvas objects.
      * @param other canvas to copy.
      */
-    Canvas(const Canvas& other);
+    Canvas(const Canvas &other);
 
     /**
      * Deep copy function.
      * @param other canvas to copy
      * @return deep-copied canvas
      */
-    Canvas& operator=(const Canvas& other);
+    Canvas &operator=(const Canvas &other);
 
     /**
      * Loads an image file into the Canvas.
@@ -88,7 +89,7 @@ public:
     /**
      * Sets the processed pixels based on an existing canvas
      */
-    void setProcessedPixels(const Canvas& other);
+    void setProcessedPixels(const Canvas &other);
 
     /**
      * Clears the processed layer
@@ -103,7 +104,7 @@ public:
     /**
      * Sets the debug pixels based on an existing canvas
      */
-    void setDebugPixels(const Canvas& other);
+    void setDebugPixels(const Canvas &other);
 
     /**
      * Clears the debug layer
@@ -111,7 +112,9 @@ public:
     void clearDebugPixels();
 
     void addDebugLine(glm::vec2 start, glm::vec2 end, Color color);
-    [[nodiscard]] const std::vector<std::tuple<glm::vec2, glm::vec2, Color>>& getDebugLines() const;
+
+    [[nodiscard]] const std::vector<std::tuple<glm::vec2, glm::vec2, Color> > &getDebugLines() const;
+
     void clearDebugLines();
 
 
@@ -121,13 +124,80 @@ public:
     [[nodiscard]] bool saveToFile(const std::string &filepath) const;
 
 
+    /**
+     * Detects color-based pixel clusters in the canvas and splits them into linear segments (horizontal or vertical).
+     * @param horizontalOrientation If true, clusters are split into horizontal segments (by rows);
+     *                              if false, they are split into vertical segments (by columns).
+     * @return A list of clusters, where each cluster is represented as a list of segments,
+     *         and each segment is a list of contiguous pixels.
+     *         - Outer vector: List of clusters
+     *         - Middle vector: List of segments within a cluster
+     *         - Inner vector: Pixels belonging to one linear segment
+     */
+    std::vector<std::vector<std::vector<Pixel> > > detectClusters(bool horizontalOrientation = true);
+
+    void clearHighlightedPixels();
+
+    void setHighlightedPixel(Pos pos, Color color);
+
+    void setHighlightedPixels(const std::vector<Pos> &cluster, Color color);
+
+    const std::vector<std::optional<Pixel> > &getHighlightedPixels() const;
+
+    const std::vector<std::vector<std::vector<Pixel>>> &getClusters() const;
+
+    void clearClusters();
+
+    const std::vector<Pixel> &getSelectedSegment() const;
+
+    void clearSelectedSegment();
+
+    void setSelectedSegment(const std::vector<Pixel> &segment);
+
+    static cv::Mat extractSubject(const Canvas &canvas) {
+        int width = canvas.getWidth();
+        int height = canvas.getHeight();
+
+        cv::Mat mask(height, width, CV_8UC1, cv::Scalar(0));
+
+        constexpr int threshold = 250; // tolerance for "near-white"
+        for (int y = 0; y < height; ++y) {
+            for (int x = 0; x < width; ++x) {
+                Color color = canvas.getPixel({x, y}).color;
+                if (color.r < threshold || color.g < threshold || color.b < threshold) {
+                    mask.at<uchar>(y, x) = 255;
+                }
+            }
+        }
+
+        return mask;
+    }
+
+    [[nodiscard]] std::optional<Pixel> getGenerator() const {
+        return generator;
+    }
+
+    void setGenerator(const Pixel &generator) {
+        this->generator = generator;
+    }
+
+    bool isValid(const Pos &pos) const {
+        return pos.x >= 0 && pos.y >= 0 &&
+               pos.x < width &&
+               pos.y < height;
+    }
+
+
 private:
     int width, height;
     std::vector<Pixel> pixels;
-    std::vector<std::optional<Pixel>> processedPixels;
-    std::vector<std::optional<Pixel>> debugPixels;
-    std::vector<std::tuple<glm::vec2, glm::vec2, Color>> debugLines;
-
+    std::vector<std::optional<Pixel> > processedPixels;
+    std::vector<std::optional<Pixel> > debugPixels;
+    std::vector<std::tuple<glm::vec2, glm::vec2, Color> > debugLines;
+    std::vector<std::optional<Pixel> > highlightedPixels; // Stores pixels that are highlighted (hovered over)
+    std::vector<std::vector<std::vector<Pixel>> > clusters;
+    std::vector<Pixel> selectedSegment;
+    std::optional<Pixel> generator;
 };
 
 #endif // CANVAS_H
