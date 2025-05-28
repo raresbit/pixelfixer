@@ -183,7 +183,7 @@ std::string getUniqueFilePath(const std::string& basePath) {
 }
 
 
-void renderLeftMenu(bool &isDrawMode, const std::vector<std::string> &imageFiles,
+void renderLeftMenu(int &mode, const std::vector<std::string> &imageFiles,
                     std::string &selectedImage, GLuint &canvasTexture, Canvas &canvas,
                     std::vector<Pixel> &drawnPath,
                     const std::vector<std::unique_ptr<Algorithm> > &algorithms,
@@ -197,22 +197,23 @@ void renderLeftMenu(bool &isDrawMode, const std::vector<std::string> &imageFiles
     ImGui::Text("Set-Up");
     if (headerFont) ImGui::PopFont();
     ImGui::Spacing();
-
     ImGui::Text("Mode");
-    int mode = isDrawMode ? 0 : 1;
-    const char *modes[] = {"Annotate", "Select Segments"};
+    const char *modes[] = {"Draw Point", "Select Segments", "Draw Freely"};
     ImGui::SetNextItemWidth(-FLT_MIN);
     if (ImGui::Combo("##ModeSelector", &mode, modes, IM_ARRAYSIZE(modes))) {
-        if (mode == 0) {
+        if (mode == 0 || mode == 2) {
             // Draw mode selected
-            isDrawMode = true;
-            drawnPath.clear();
+            if (mode == 0)
+                drawnPath.clear();
+            else
+                canvas.clearGenerator();
             for (auto &algo: algorithms) {
                 if (algo) algo->reset();
             }
         } else {
             // Image mode selected
-            isDrawMode = false;
+            drawnPath.clear();
+            canvas.clearGenerator();
 
             if (!imageFiles.empty()) {
                 selectedImage = imageFiles[0]; // Automatically select the first image
@@ -266,7 +267,8 @@ void renderLeftMenu(bool &isDrawMode, const std::vector<std::string> &imageFiles
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0, 0));
         ImVec2 buttonSize(40, 20);
         if (ImGui::Button("Run", buttonSize)) {
-            algo->reset();
+            if (algo->name() != "Banding Detection")
+                algo->reset();
             algo->run();
         }
         ImGui::SameLine();
@@ -328,7 +330,7 @@ void renderLeftMenu(bool &isDrawMode, const std::vector<std::string> &imageFiles
     ImGui::End();
 }
 
-void renderCanvas(bool isDrawMode, const std::string &selectedImage, GLuint &canvasTexture, Canvas &canvas,
+void renderCanvas(int mode, const std::string &selectedImage, GLuint &canvasTexture, Canvas &canvas,
                   std::vector<Pixel> &drawnPath, bool &mousePressed,
                   const std::vector<std::unique_ptr<Algorithm> > &algorithms,
                   float& zoom) {
@@ -355,7 +357,10 @@ void renderCanvas(bool isDrawMode, const std::string &selectedImage, GLuint &can
         }
     }
 
-    if (isDrawMode) {
+    static double lastMousePressTime = -5.0; // Initialize to -5 to allow drawing immediately
+    double currentTime = ImGui::GetTime();   // Current time in seconds
+
+    if (mode == 0 || mode == 2) {
         ImVec2 canvas_pos = ImGui::GetCursorScreenPos(); // Get position before rendering image
 
         // Hover effect - Check if the mouse is over a cluster
@@ -372,18 +377,26 @@ void renderCanvas(bool isDrawMode, const std::string &selectedImage, GLuint &can
             if (canvasX >= 0 && canvasX < canvas.getWidth() &&
                 canvasY >= 0 && canvasY < canvas.getHeight()) {
 
-                if (std::ranges::none_of(drawnPath,
-                                         [canvasX, canvasY](const Pixel &p) {
-                                             return p.pos.x == canvasX && p.pos.y == canvasY;
-                                         })) {
-                    // Uncomment this to allow drawing paths, not single pixels
-                    // drawnPath.emplace_back(Pixel{{255, 0, 0}, {canvasX, canvasY}});
-
+                if (mode == 0) {
                     // Set the generator
                     canvas.setGenerator(Pixel{{255, 0, 0}, {canvasX, canvasY}});
                     canvas.clearDebugPixels();
                     canvas.setDebugPixel({canvasX, canvasY}, {255, 0, 0});
+                    drawnPath.clear();
+                } else {
+                    if (currentTime - lastMousePressTime > 2.0) {
+                        drawnPath.clear();
+                        canvas.clearDrawnPath();
+                    }
+
+                    auto drawn = Pixel{{255, 0, 0}, {canvasX, canvasY}};
+                    drawnPath.emplace_back(drawn);
+                    canvas.clearGenerator();
+                    canvas.setDebugPixel({canvasX, canvasY}, {255, 0, 0});
+                    canvas.addDrawnPath(drawn);
                 }
+
+                lastMousePressTime = currentTime;
             }
         }
 
@@ -514,7 +527,7 @@ void runMainLoop(GLFWwindow *window) {
     Canvas canvas = Canvas(32, 32);
     GLuint canvasTexture = 0;
     canvas.fill({255, 255, 255});
-    bool isDrawMode = false;
+    int mode = 0;
     bool mousePressed = false;
     float zoom = 8.0f;
     std::vector<Pixel> drawnPath;
@@ -526,8 +539,8 @@ void runMainLoop(GLFWwindow *window) {
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
-        renderCanvas(isDrawMode, selectedImage, canvasTexture, canvas, drawnPath, mousePressed, algorithms, zoom);
-        renderLeftMenu(isDrawMode, imageFiles, selectedImage, canvasTexture, canvas, drawnPath, algorithms, headerFont);
+        renderCanvas(mode, selectedImage, canvasTexture, canvas, drawnPath, mousePressed, algorithms, zoom);
+        renderLeftMenu(mode, imageFiles, selectedImage, canvasTexture, canvas, drawnPath, algorithms, headerFont);
 
         ImGui::Render();
         int display_w, display_h;

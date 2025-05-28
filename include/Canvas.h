@@ -115,6 +115,10 @@ public:
 
     [[nodiscard]] const std::vector<std::tuple<glm::vec2, glm::vec2, Color> > &getDebugLines() const;
 
+    void setDebugLines(const std::vector<std::tuple<glm::vec2, glm::vec2, Color>> &debug_lines) {
+        debugLines = debug_lines;
+    }
+
     void clearDebugLines();
 
 
@@ -181,12 +185,21 @@ public:
         this->generator = generator;
     }
 
-    bool isValid(const Pos &pos) const {
-        return pos.x >= 0 && pos.y >= 0 &&
-               pos.x < width &&
-               pos.y < height;
+    void clearGenerator() {
+        generator = std::nullopt;
     }
 
+    void clearDrawnPath() {
+        drawnPath.clear();
+    }
+
+    void addDrawnPath(const Pixel &pixel) {
+        drawnPath.push_back(pixel);
+    }
+
+    [[nodiscard]] const std::vector<Pixel> &getDrawnPath() const {
+        return drawnPath;
+    }
 
 private:
     int width, height;
@@ -198,6 +211,7 @@ private:
     std::vector<std::vector<std::vector<Pixel>> > clusters;
     std::vector<Pixel> selectedSegment;
     std::optional<Pixel> generator;
+    std::vector<Pixel> drawnPath;
 };
 
 #endif // CANVAS_H

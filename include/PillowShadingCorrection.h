@@ -53,28 +53,31 @@ public:
         auto error = 9999999;
         auto bestCorrectedCanvas = Canvas(width, height);
         auto bestBandingLines = std::vector<std::tuple<int, int, int> >();
-        // for (int i = 0; i < 1000; ++i) {
-        Canvas correctedCanvas(width, height);
+        for (int i = 0; i < 10; ++i) {
+            Canvas correctedCanvas(width, height);
 
-        construct_corrected_canvas(width, height, layers, correctedCanvas);
+            constructCorrectedCanvas(width, height, layers, correctedCanvas);
 
-        auto algo = std::make_unique<BandingDetection>(correctedCanvas);
-        auto bandingLines = std::vector<std::tuple<int, int, int> >();
+            auto detection = std::make_unique<BandingDetection>(correctedCanvas);
+            auto newError = detection->bandingDetection();
 
-        // algo->detectBandingLines(correctedCanvas, bandingLines);
-        if (bandingLines.size() < error) {
-            bestCorrectedCanvas = correctedCanvas;
-            bestBandingLines = bandingLines;
-            error = bandingLines.size();
+            if (newError < error) {
+                bestCorrectedCanvas = correctedCanvas;
+                error = newError;
+            }
         }
-        // }
+
+        auto detection = std::make_unique<BandingDetection>(canvas);
+        auto originalError = detection->bandingDetection();
+
+        errorImprovement = originalError - error;
 
         canvas.setProcessedPixels(bestCorrectedCanvas);
-        canvas.clearDebugLines();
-        for (const auto &[y, startX, len]: bestBandingLines) {
-            glm::vec2 start = glm::vec2(static_cast<float>(startX), static_cast<float>(y) + 0.5f);
-            glm::vec2 end = glm::vec2(static_cast<float>(startX + len), static_cast<float>(y) + 0.5f);
-            canvas.addDebugLine(start, end, {255, 0, 0}); // Red debug line
+
+        if (bandingDetection) {
+            canvas.setDebugLines(bestCorrectedCanvas.getDebugLines());
+        } else {
+            canvas.clearDebugLines();
         }
     }
 
@@ -86,9 +89,13 @@ public:
         selectedLayer = 0;
         debugNeighborCandidates.clear();
         showNeighborCandidates = false;
+        errorImprovement = 0;
     }
 
     void renderUI() override {
+        ImGui::Checkbox("Banding Detection", &bandingDetection);
+        ImGui::Text("Error Decreased By: %d", errorImprovement);
+
         // Combo to select erosion mode
         const char *erosionModes[] = {"Constant Erosion Iterations", "Linear Erosion Iterations (On Layer #)"};
         ImGui::SetNextItemWidth(-FLT_MIN);
@@ -112,7 +119,6 @@ public:
     }
 
     void renderDebugUI() override {
-        ImGui::Separator();
         ImGui::Checkbox("Debug View", &showDebug);
 
         if (!showDebug) {
@@ -172,13 +178,14 @@ private:
     float linearErosionFactor = 1.0f; // Default factor
     int expansionIterations = 1;
     float probabilityToAddPixel = 0.3f;
+    bool bandingDetection = false;
+    int errorImprovement = 0;
 
-    void construct_corrected_canvas(int width, int height, std::vector<std::pair<Color, cv::Mat> > layers,
-                                    Canvas &correctedCanvas) {
-        // Fill in using white background
+    void constructCorrectedCanvas(int width, int height, std::vector<std::pair<Color, cv::Mat> > layers,
+                                  Canvas &correctedCanvas) {
         correctedCanvas.fill({255, 255, 255});
 
-        // Fill in the subject outline and its first layer by default on this new canvas.
+        // Fill subject outline and first layer
         for (size_t i = 0; i < 2; ++i) {
             auto &[color, currentMask] = layers[i];
             for (int y = 0; y < height; ++y)
@@ -187,19 +194,47 @@ private:
                         correctedCanvas.setPixel({x, y}, color);
         }
 
-        // Retrieve the first debug pixel ("generator") if it exists
-        std::optional<Pixel> dp = getCanvas().getGenerator();
         std::optional<Pixel> generator = std::nullopt;
-        if (dp.has_value())
+        std::optional<cv::Mat> drawnPathMask = std::nullopt;
+
+        // First try to get the generator pixel
+        if (auto dp = getCanvas().getGenerator(); dp.has_value()) {
             generator = dp;
+        } else {
+            const auto &drawnPath = getCanvas().getDrawnPath();
+            if (!drawnPath.empty()) {
+                std::vector<cv::Point> contour;
+                for (const Pixel &p: drawnPath)
+                    contour.emplace_back(p.pos.x, p.pos.y);
 
+                cv::Mat mask = cv::Mat::zeros(height, width, CV_8UC1);
+                std::vector<std::vector<cv::Point> > contours = {contour};
+                cv::drawContours(mask, contours, 0, 255, cv::FILLED);
 
-        for (size_t i = 2; i < layers.size(); ++i) {
+                // Compute the center of mass
+                cv::Moments m = cv::moments(mask, true);
+                if (m.m00 != 0.0) {
+                    int cx = static_cast<int>(m.m10 / m.m00);
+                    int cy = static_cast<int>(m.m01 / m.m00);
+                    generator = Pixel{{0, 0, 0}, {cx, cy}};
+                }
+
+                drawnPathMask = mask;
+            }
+        }
+
+        int iterations = 0;
+        if (drawnPathMask.has_value()) {
+            iterations = layers.size() - 2;
+        } else {
+            iterations = layers.size() - 1;
+        }
+
+        for (size_t i = 2; i <= iterations; ++i) {
             auto &[color, currentMask] = layers[i];
             cv::Mat translatedMask = cv::Mat::zeros(height, width, CV_8UC1);
 
             if (generator.has_value()) {
-                // Compute the center of the currentMask
                 int minX = width, minY = height, maxX = 0, maxY = 0;
                 for (int y = 0; y < height; ++y)
                     for (int x = 0; x < width; ++x)
@@ -226,21 +261,18 @@ private:
                                 translatedMask.at<uchar>(newY, newX) = 255;
                         }
             } else {
-                // No generator: use the original mask
                 translatedMask = currentMask;
             }
 
             cv::Mat modified;
             cv::Mat kernel = cv::Mat::ones(3, 3, CV_8UC1);
             if (erosionMode == 0) {
-                // Constant erosion
                 cv::erode(translatedMask, modified, kernel, cv::Point(-1, -1), 1);
             } else {
-                // Linear erosion
-                cv::erode(translatedMask, modified, kernel, cv::Point(-1, -1), static_cast<int>(linearErosionFactor * i));
+                cv::erode(translatedMask, modified, kernel, cv::Point(-1, -1),
+                          static_cast<int>(linearErosionFactor * i));
             }
 
-            // Store eroded layer before expansion for debug view
             debugLayers.push_back(translatedMask);
             std::unordered_set<std::pair<int, int> > neighbors;
             expandShape(modified, &neighbors, expansionIterations);
@@ -248,10 +280,18 @@ private:
 
             for (int y = 0; y < height; ++y)
                 for (int x = 0; x < width; ++x)
-                    // Paint the modified pixels of the layer
-                    // Do not add pixels outside the outline of the subject
                     if (modified.at<uchar>(y, x) && layers[1].second.at<uchar>(y, x))
                         correctedCanvas.setPixel({x, y}, color);
+        }
+
+        // If a drawn path mask was constructed, add it as the final layer as-is
+        if (drawnPathMask.has_value()) {
+            auto &mask = drawnPathMask.value();
+            Color lastColor = layers.back().first; // Use the last layer color for consistency
+            for (int y = 0; y < height; ++y)
+                for (int x = 0; x < width; ++x)
+                    if (mask.at<uchar>(y, x))
+                        correctedCanvas.setPixel({x, y}, lastColor);
         }
     }
 
@@ -294,7 +334,6 @@ private:
 
     void expandShape(cv::Mat &input_shape, std::unordered_set<std::pair<int, int> > *out_candidate_neighbors = nullptr,
                      int iterations = 1) {
-
         if (iterations == 0) return;
 
         std::vector<std::pair<int, int> > neighbors = {

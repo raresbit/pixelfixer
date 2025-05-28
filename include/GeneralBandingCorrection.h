@@ -60,7 +60,9 @@ public:
                     ImGui::SameLine();
                     ImGui::Checkbox("Bottom", &alterBottomEdge);
                 }
+            }
 
+            if (operationIndex == 0 || operationIndex == 2) {
                 ImGui::Text("Color Mode:");
                 ImGui::SetNextItemWidth(-FLT_MIN);
                 const char *colorModes[] = {
@@ -161,7 +163,7 @@ public:
         }
 
         // Refresh after first application
-        canvas.detectClusters(!horizontal);
+        canvas.detectClusters(horizontal);
         canvas.clearHighlightedPixels();
 
         if (!appliedAlignment) return;
@@ -310,14 +312,14 @@ private:
                 return;
             }
 
-            const Pixel &p = canvas.getPixel(candidate);
-            if (toFront)
-                segment.insert(segment.begin(), p);
-            else
-                segment.push_back(p);
+            auto newPixel = Pixel{originalColor, candidate};
 
-            Color newColor = determineReplacementColor(p.pos, canvas, p.color);
-            replacements.emplace_back(Pixel{newColor, p.pos});
+            if (toFront)
+                segment.insert(segment.begin(), newPixel);
+            else
+                segment.push_back(newPixel);
+
+            replacements.emplace_back(newPixel);
         };
 
         if (operationIndex == 0 || operationIndex == 3) {

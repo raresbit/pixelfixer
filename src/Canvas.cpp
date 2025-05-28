@@ -51,6 +51,7 @@ bool Canvas::loadFromFile(const std::string &filepath) {
     highlightedPixels.resize(width * height);
     clusters = detectClusters();
     selectedSegment.clear();
+    clearDrawnPath();
 
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {

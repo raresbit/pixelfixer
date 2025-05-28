@@ -24,142 +24,39 @@ public:
         return "Banding Detection";
     }
 
+    int bandingDetection() {
+        error = 0;
+        debugPixels.clear();
+
+        bool origHorizontal = horizontal;
+        getCanvas().detectClusters(horizontal);
+
+        if (currentSelection == 2) {
+            // Both
+            horizontal = true;
+            getCanvas().detectClusters(true);
+            runDetection();
+
+            horizontal = false;
+            getCanvas().detectClusters(false);
+            runDetection();
+        } else {
+            runDetection();
+        }
+
+        horizontal = origHorizontal;
+
+        return error;
+    }
+
     void run() override {
-    error = 0;
-    debugPixels.clear();
 
-    if (currentSelection == 2) {  // Both
-        horizontal = true;
-        getCanvas().detectClusters(true);
-        runDetection();
-
-        horizontal = false;
-        getCanvas().detectClusters(false);
-        runDetection();
-    } else {
-        runDetection();
-    }
-}
-
-void runDetection() {
-    Canvas &canvas = getCanvas();
-    const auto allClusters = canvas.getClusters();
-
-    std::unordered_set<const std::vector<Pixel> *> alreadyChecked;
-    std::set<std::pair<const void*, const void*>> countedPairs;
-
-    for (const auto &clusterA : allClusters) {
-        for (const auto &segmentA : clusterA) {
-            if (alreadyChecked.contains(&segmentA)) continue;
-            if (segmentA.size() <= 1) continue;
-
-            std::unordered_set<Pos> segmentAPosSet;
-            for (const auto &p : segmentA) segmentAPosSet.insert(p.pos);
-
-            auto [startA, endA] = getSegmentEndpoints(segmentA, !horizontal);
-
-            bool foundMatchForSegmentA = false;
-
-            for (const auto &clusterB : allClusters) {
-                if (&clusterB == &clusterA) continue;
-
-                for (const auto &segmentB : clusterB) {
-                    auto ptrA = static_cast<const void*>(&segmentA);
-                    auto ptrB = static_cast<const void*>(&segmentB);
-                    std::pair<const void*, const void*> pairKey = (ptrA < ptrB) ? std::make_pair(ptrA, ptrB) : std::make_pair(ptrB, ptrA);
-
-                    if (countedPairs.contains(pairKey)) continue;
-
-                    for (const auto &p : segmentB) {
-                        for (const Pos &n : {
-                            Pos{p.pos.x + 1, p.pos.y},
-                            Pos{p.pos.x - 1, p.pos.y},
-                            Pos{p.pos.x, p.pos.y + 1},
-                            Pos{p.pos.x, p.pos.y - 1}
-                        }) {
-                            if (segmentAPosSet.contains(n)) {
-                                auto [startB, endB] = getSegmentEndpoints(segmentB, !horizontal);
-                                auto alignmentOpt = checkEndpointAlignment(startA, endA, startB, endB, !horizontal);
-
-                                if (alignmentOpt.has_value()) {
-                                    error++;
-                                    countedPairs.insert(pairKey);
-
-                                    Color red(255, 0, 0);
-                                    for (const auto &px : segmentA) {
-                                        Pixel redPixel = px;
-                                        redPixel.color = red;
-                                        debugPixels.push_back(redPixel);
-                                    }
-                                    for (const auto &px : segmentB) {
-                                        Pixel redPixel = px;
-                                        redPixel.color = red;
-                                        debugPixels.push_back(redPixel);
-                                    }
-
-                                    std::vector<Pixel> combined = segmentA;
-                                    combined.insert(combined.end(), segmentB.begin(), segmentB.end());
-                                    drawRectangle(canvas, combined, red);
-
-                                    foundMatchForSegmentA = true;
-                                    break;
-                                }
-                            }
-                        }
-                        if (foundMatchForSegmentA) break;
-                    }
-                    if (foundMatchForSegmentA) break;
-                }
-                if (foundMatchForSegmentA) break;
+        for (int i = 0; i < getCanvas().getWidth(); i++) {
+            for (int j = 0; j < getCanvas().getHeight(); j++) {
+                getCanvas().setPixel({i, j}, getCanvas().getPixel({i, j}).color);
             }
-
-            alreadyChecked.insert(&segmentA);
         }
-    }
-}
-
-
-
-
-    void drawRectangle(Canvas &canvas, const std::vector<Pixel> &pixels, const Color &color) {
-        if (pixels.empty()) return;
-
-        // Find bounding box of all pixels
-        int minX = pixels[0].pos.x;
-        int maxX = pixels[0].pos.x;
-        int minY = pixels[0].pos.y;
-        int maxY = pixels[0].pos.y;
-
-        for (const auto& pixel : pixels) {
-            if (pixel.pos.x < minX) minX = pixel.pos.x;
-            if (pixel.pos.x > maxX) maxX = pixel.pos.x;
-            if (pixel.pos.y < minY) minY = pixel.pos.y;
-            if (pixel.pos.y > maxY) maxY = pixel.pos.y;
-        }
-
-        // Use float for coordinates
-        float x0 = static_cast<float>(minX);
-        float x1 = static_cast<float>(maxX);
-        float y0 = static_cast<float>(minY);
-        float y1 = static_cast<float>(maxY);
-
-        // Define corners around the bounding box (pixel edges)
-        glm::vec2 topLeft = glm::vec2(x0 - 0.5f, y0 - 0.5f);
-        glm::vec2 topRight = glm::vec2(x1 + 0.5f, y0 - 0.5f);
-        glm::vec2 bottomRight = glm::vec2(x1 + 0.5f, y1 + 0.5f);
-        glm::vec2 bottomLeft = glm::vec2(x0 - 0.5f, y1 + 0.5f);
-
-        // Offset all corners 0.5 to the right as per your previous request
-        glm::vec2 tl = glm::vec2(topLeft.x + 0.5f, topLeft.y);
-        glm::vec2 tr = glm::vec2(topRight.x + 0.5f, topRight.y);
-        glm::vec2 br = glm::vec2(bottomRight.x + 0.5f, bottomRight.y);
-        glm::vec2 bl = glm::vec2(bottomLeft.x + 0.5f, bottomLeft.y);
-
-        // Draw rectangle around the bounding box
-        canvas.addDebugLine(tl, tr, color);
-        canvas.addDebugLine(tr, br, color);
-        canvas.addDebugLine(br, bl, color);
-        canvas.addDebugLine(bl, tl, color);
+        bandingDetection();
     }
 
 
@@ -175,7 +72,7 @@ void runDetection() {
 
     void renderUI() override {
         // Dropdown options
-        const char* options[] = { "Horizontal", "Vertical", "Both" };
+        const char *options[] = {"Horizontal", "Vertical", "Both"};
 
         if (ImGui::BeginCombo("Segment Orientation", options[currentSelection])) {
             for (int n = 0; n < IM_ARRAYSIZE(options); n++) {
@@ -204,7 +101,6 @@ void runDetection() {
         ImGui::Text("Error (# of pairs of \"banding\" segments): %d", error);
         ImGui::Checkbox("Debug View", &showDebug);
     }
-
 
 
     // NO LONGER IN USE: Previous banding detection method
@@ -250,7 +146,130 @@ private:
     bool horizontal = true;
     std::vector<Pixel> debugPixels;
     int error = 0;
-    int currentSelection = 0;
+    int currentSelection = 2;
+
+
+    void runDetection() {
+        Canvas &canvas = getCanvas();
+        const auto allClusters = canvas.getClusters();
+
+        std::unordered_set<const std::vector<Pixel> *> alreadyChecked;
+        std::set<std::pair<const void *, const void *> > countedPairs;
+
+        for (const auto &clusterA: allClusters) {
+            for (const auto &segmentA: clusterA) {
+                if (alreadyChecked.contains(&segmentA)) continue;
+                if (segmentA.size() <= 1) continue;
+
+                std::unordered_set<Pos> segmentAPosSet;
+                for (const auto &p: segmentA) segmentAPosSet.insert(p.pos);
+
+                auto [startA, endA] = getSegmentEndpoints(segmentA, !horizontal);
+
+                bool foundMatchForSegmentA = false;
+
+                for (const auto &clusterB: allClusters) {
+                    if (&clusterB == &clusterA) continue;
+
+                    for (const auto &segmentB: clusterB) {
+                        auto ptrA = static_cast<const void *>(&segmentA);
+                        auto ptrB = static_cast<const void *>(&segmentB);
+                        std::pair<const void *, const void *> pairKey = (ptrA < ptrB)
+                                                                            ? std::make_pair(ptrA, ptrB)
+                                                                            : std::make_pair(ptrB, ptrA);
+
+                        if (countedPairs.contains(pairKey)) continue;
+
+                        for (const auto &p: segmentB) {
+                            for (const Pos &n: {
+                                     Pos{p.pos.x + 1, p.pos.y},
+                                     Pos{p.pos.x - 1, p.pos.y},
+                                     Pos{p.pos.x, p.pos.y + 1},
+                                     Pos{p.pos.x, p.pos.y - 1}
+                                 }) {
+                                if (segmentAPosSet.contains(n)) {
+                                    auto [startB, endB] = getSegmentEndpoints(segmentB, !horizontal);
+                                    auto alignmentOpt = checkEndpointAlignment(startA, endA, startB, endB, !horizontal);
+
+                                    if (alignmentOpt.has_value()) {
+                                        error++;
+                                        countedPairs.insert(pairKey);
+
+                                        Color red(255, 0, 0);
+                                        for (const auto &px: segmentA) {
+                                            Pixel redPixel = px;
+                                            redPixel.color = red;
+                                            debugPixels.push_back(redPixel);
+                                        }
+                                        for (const auto &px: segmentB) {
+                                            Pixel redPixel = px;
+                                            redPixel.color = red;
+                                            debugPixels.push_back(redPixel);
+                                        }
+
+                                        std::vector<Pixel> combined = segmentA;
+                                        combined.insert(combined.end(), segmentB.begin(), segmentB.end());
+                                        drawRectangle(canvas, combined, red);
+
+                                        foundMatchForSegmentA = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (foundMatchForSegmentA) break;
+                        }
+                        if (foundMatchForSegmentA) break;
+                    }
+                    if (foundMatchForSegmentA) break;
+                }
+
+                alreadyChecked.insert(&segmentA);
+            }
+        }
+    }
+
+
+    void drawRectangle(Canvas &canvas, const std::vector<Pixel> &pixels, const Color &color) {
+        if (pixels.empty()) return;
+
+        // Find bounding box of all pixels
+        int minX = pixels[0].pos.x;
+        int maxX = pixels[0].pos.x;
+        int minY = pixels[0].pos.y;
+        int maxY = pixels[0].pos.y;
+
+        for (const auto &pixel: pixels) {
+            if (pixel.pos.x < minX) minX = pixel.pos.x;
+            if (pixel.pos.x > maxX) maxX = pixel.pos.x;
+            if (pixel.pos.y < minY) minY = pixel.pos.y;
+            if (pixel.pos.y > maxY) maxY = pixel.pos.y;
+        }
+
+        // Use float for coordinates
+        float x0 = static_cast<float>(minX);
+        float x1 = static_cast<float>(maxX);
+        float y0 = static_cast<float>(minY);
+        float y1 = static_cast<float>(maxY);
+
+        // Define corners around the bounding box (pixel edges)
+        glm::vec2 topLeft = glm::vec2(x0 - 0.5f, y0 - 0.5f);
+        glm::vec2 topRight = glm::vec2(x1 + 0.5f, y0 - 0.5f);
+        glm::vec2 bottomRight = glm::vec2(x1 + 0.5f, y1 + 0.5f);
+        glm::vec2 bottomLeft = glm::vec2(x0 - 0.5f, y1 + 0.5f);
+
+        // Offset all corners 0.5 to the right as per your previous request
+        glm::vec2 tl = glm::vec2(topLeft.x + 0.5f, topLeft.y);
+        glm::vec2 tr = glm::vec2(topRight.x + 0.5f, topRight.y);
+        glm::vec2 br = glm::vec2(bottomRight.x + 0.5f, bottomRight.y);
+        glm::vec2 bl = glm::vec2(bottomLeft.x + 0.5f, bottomLeft.y);
+
+        // Draw rectangle around the bounding box
+        canvas.addDebugLine(tl, tr, color);
+        canvas.addDebugLine(tr, br, color);
+        canvas.addDebugLine(br, bl, color);
+        canvas.addDebugLine(bl, tl, color);
+    }
+
 
     enum class MatchType {
         None,
