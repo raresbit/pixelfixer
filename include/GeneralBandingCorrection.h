@@ -35,7 +35,7 @@ public:
         ImGui::SameLine();
         if (ImGui::Button("Switch")) {
             horizontal = !horizontal;
-            getCanvas().detectClusters(horizontal);
+            getCanvas().segmentClusters(horizontal);
             getCanvas().clearSelectedSegment();
             getCanvas().clearHighlightedPixels();
         }
@@ -163,7 +163,7 @@ public:
         }
 
         // Refresh after first application
-        canvas.detectClusters(horizontal);
+        canvas.segmentClusters(horizontal);
         canvas.clearHighlightedPixels();
 
         if (!appliedAlignment) return;
@@ -197,7 +197,7 @@ public:
         }
 
         // Final cleanup
-        canvas.detectClusters(horizontal);
+        canvas.segmentClusters(horizontal);
         canvas.clearSelectedSegment();
         canvas.clearHighlightedPixels();
     }
@@ -206,7 +206,7 @@ public:
     void reset() override {
         Algorithm::reset();
         getCanvas().clearDebugLines();
-        getCanvas().detectClusters(horizontal);
+        getCanvas().segmentClusters(horizontal);
     }
 
 private:

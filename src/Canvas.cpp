@@ -49,7 +49,7 @@ bool Canvas::loadFromFile(const std::string &filepath) {
     debugPixels.resize(width * height);
     clearHighlightedPixels();
     highlightedPixels.resize(width * height);
-    clusters = detectClusters();
+    clusters = segmentClusters();
     selectedSegment.clear();
     clearDrawnPath();
 
@@ -169,7 +169,7 @@ bool Canvas::saveToFile(const std::string &filepath) const {
 }
 
 
-std::vector<std::vector<std::vector<Pixel>>> Canvas::detectClusters(bool horizontalOrientation) {
+std::vector<std::vector<std::vector<Pixel>>> Canvas::segmentClusters(bool horizontalOrientation) {
     clearClusters();
     std::vector<bool> visited(width * height, false);
 

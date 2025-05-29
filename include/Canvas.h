@@ -138,7 +138,7 @@ public:
      *         - Middle vector: List of segments within a cluster
      *         - Inner vector: Pixels belonging to one linear segment
      */
-    std::vector<std::vector<std::vector<Pixel> > > detectClusters(bool horizontalOrientation = true);
+    std::vector<std::vector<std::vector<Pixel> > > segmentClusters(bool horizontalOrientation = true);
 
     void clearHighlightedPixels();
 
