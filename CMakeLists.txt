@@ -19,7 +19,7 @@ set(IMGUI_SOURCES
 
 set(PROJECT_SOURCES
         src/main.cpp
-        src/Canvas.cpp
+        src/PixelArtImage.cpp
         external/stb/stb.cpp
 )
 

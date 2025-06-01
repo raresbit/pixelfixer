@@ -10,14 +10,14 @@
 #include <vector>
 #include <iostream>
 #include <opencv2/opencv.hpp>
-#include "../include/Canvas.h"
+#include "../include/PixelArtImage.h"
 #include "imgui.h"
 #include <glm/glm.hpp>
 
 
 class BandingDetection final : public Algorithm {
 public:
-    explicit BandingDetection(Canvas &canvas) : Algorithm(canvas) {
+    explicit BandingDetection(PixelArtImage &canvas) : Algorithm(canvas) {
     }
 
     [[nodiscard]] std::string name() const override {
@@ -27,19 +27,19 @@ public:
     int bandingDetection() {
         error = 0;
         debugPixels.clear();
-        getCanvas().clearDebugLines();
+        getPixelArtImage().clearDebugLines();
 
         bool origHorizontal = horizontal;
-        getCanvas().segmentClusters(horizontal);
+        getPixelArtImage().segmentClusters(horizontal);
 
         if (currentSelection == 2) {
             // Both
             horizontal = true;
-            getCanvas().segmentClusters(true);
+            getPixelArtImage().segmentClusters(true);
             runDetection();
 
             horizontal = false;
-            getCanvas().segmentClusters(false);
+            getPixelArtImage().segmentClusters(false);
             runDetection();
         } else {
             runDetection();
@@ -51,9 +51,9 @@ public:
     }
 
     void run() override {
-        for (int i = 0; i < getCanvas().getWidth(); i++) {
-            for (int j = 0; j < getCanvas().getHeight(); j++) {
-                getCanvas().setPixel({i, j}, getCanvas().getPixel({i, j}).color);
+        for (int i = 0; i < getPixelArtImage().getWidth(); i++) {
+            for (int j = 0; j < getPixelArtImage().getHeight(); j++) {
+                getPixelArtImage().setPixel({i, j}, getPixelArtImage().getPixel({i, j}).color);
             }
         }
         bandingDetection();
@@ -64,10 +64,10 @@ public:
         Algorithm::reset();
         debugPixels.clear();
         showDebug = false;
-        getCanvas().clearDebugLines();
-        getCanvas().clearHighlightedPixels();
+        getPixelArtImage().clearDebugLines();
+        getPixelArtImage().clearHighlightedPixels();
         error = 0;
-        getCanvas().segmentClusters(horizontal);
+        getPixelArtImage().segmentClusters(horizontal);
     }
 
     void renderUI() override {
@@ -83,13 +83,13 @@ public:
                     currentSelection = n;
 
                     // Clear and detect clusters accordingly
-                    getCanvas().clearHighlightedPixels();
+                    getPixelArtImage().clearHighlightedPixels();
                     if (currentSelection == 0) {
                         horizontal = true;
-                        getCanvas().segmentClusters(true);
+                        getPixelArtImage().segmentClusters(true);
                     } else if (currentSelection == 1) {
                         horizontal = false;
-                        getCanvas().segmentClusters(false);
+                        getPixelArtImage().segmentClusters(false);
                     } else {
                         // Both: We'll handle this in run()
                     }
@@ -113,7 +113,7 @@ private:
 
 
     void runDetection() {
-        Canvas &canvas = getCanvas();
+        PixelArtImage &canvas = getPixelArtImage();
         const auto allClusters = canvas.getClusters();
 
         std::unordered_set<const std::vector<Pixel> *> alreadyChecked;
@@ -172,7 +172,7 @@ private:
 
                                         std::vector<Pixel> combined = segmentA;
                                         combined.insert(combined.end(), segmentB.begin(), segmentB.end());
-                                        drawRectangle(canvas, combined, red);
+                                        canvas.drawRectangle(combined, red);
 
                                         foundMatchForSegmentA = true;
                                         break;
@@ -191,47 +191,6 @@ private:
         }
     }
 
-
-    static void drawRectangle(Canvas &canvas, const std::vector<Pixel> &pixels, const Color &color) {
-        if (pixels.empty()) return;
-
-        // Find bounding box of all pixels
-        int minX = pixels[0].pos.x;
-        int maxX = pixels[0].pos.x;
-        int minY = pixels[0].pos.y;
-        int maxY = pixels[0].pos.y;
-
-        for (const auto &pixel: pixels) {
-            if (pixel.pos.x < minX) minX = pixel.pos.x;
-            if (pixel.pos.x > maxX) maxX = pixel.pos.x;
-            if (pixel.pos.y < minY) minY = pixel.pos.y;
-            if (pixel.pos.y > maxY) maxY = pixel.pos.y;
-        }
-
-        // Use float for coordinates
-        auto x0 = static_cast<float>(minX);
-        auto x1 = static_cast<float>(maxX);
-        auto y0 = static_cast<float>(minY);
-        auto y1 = static_cast<float>(maxY);
-
-        // Define corners around the bounding box (pixel edges)
-        glm::vec2 topLeft = glm::vec2(x0 - 0.5f, y0 - 0.5f);
-        glm::vec2 topRight = glm::vec2(x1 + 0.5f, y0 - 0.5f);
-        glm::vec2 bottomRight = glm::vec2(x1 + 0.5f, y1 + 0.5f);
-        glm::vec2 bottomLeft = glm::vec2(x0 - 0.5f, y1 + 0.5f);
-
-        // Offset all corners 0.5 to the right as per your previous request
-        glm::vec2 tl = glm::vec2(topLeft.x + 0.5f, topLeft.y);
-        glm::vec2 tr = glm::vec2(topRight.x + 0.5f, topRight.y);
-        glm::vec2 br = glm::vec2(bottomRight.x + 0.5f, bottomRight.y);
-        glm::vec2 bl = glm::vec2(bottomLeft.x + 0.5f, bottomLeft.y);
-
-        // Draw rectangle around the bounding box
-        canvas.addDebugLine(tl, tr, color);
-        canvas.addDebugLine(tr, br, color);
-        canvas.addDebugLine(br, bl, color);
-        canvas.addDebugLine(bl, tl, color);
-    }
 
 
     static std::pair<Pos, Pos> getSegmentEndpoints(const std::vector<Pixel> &segment, bool isVertical) {

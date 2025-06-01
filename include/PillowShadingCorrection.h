@@ -10,7 +10,7 @@
 #include <vector>
 #include <iostream>
 #include <opencv2/opencv.hpp>
-#include "../include/Canvas.h"
+#include "../include/PixelArtImage.h"
 #include "imgui.h"
 #include <unordered_map>
 #include <random>
@@ -30,7 +30,7 @@ struct std::hash<std::pair<int, int> > {
 
 class PillowShadingCorrection final : public Algorithm {
 public:
-    explicit PillowShadingCorrection(Canvas &canvas) : Algorithm(canvas) {
+    explicit PillowShadingCorrection(PixelArtImage &canvas) : Algorithm(canvas) {
     }
 
     [[nodiscard]] std::string name() const override {
@@ -38,7 +38,7 @@ public:
     }
 
     void run() override {
-        Canvas &canvas = getCanvas();
+        PixelArtImage &canvas = getPixelArtImage();
         int width = canvas.getWidth();
         int height = canvas.getHeight();
 
@@ -49,12 +49,12 @@ public:
         // Clear debug layers
         debugLayers.clear();
 
-        // Create a blank Canvas for the processed (resulting) picture
+        // Create a blank PixelArtImage for the processed (resulting) picture
         auto error = 9999999;
-        auto bestCorrectedCanvas = Canvas(width, height);
+        auto bestCorrectedCanvas = PixelArtImage(width, height);
         auto bestBandingLines = std::vector<std::tuple<int, int, int> >();
-        for (int i = 0; i < 10; ++i) {
-            Canvas correctedCanvas(width, height);
+        for (int i = 0; i < PIPELINE_ITERATIONS; ++i) {
+            PixelArtImage correctedCanvas(width, height);
 
             constructCorrectedCanvas(width, height, layers, correctedCanvas);
 
@@ -84,7 +84,9 @@ public:
     void reset() override {
         Algorithm::reset();
         debugLayers.clear();
-        getCanvas().clearDebugLines();
+        getPixelArtImage().clearDebugLines();
+        getPixelArtImage().clearDebugPixels();
+        getPixelArtImage().clearProcessedPixels();
         showDebug = false;
         selectedLayer = 0;
         debugNeighborCandidates.clear();
@@ -93,36 +95,47 @@ public:
     }
 
     void renderUI() override {
-        ImGui::Checkbox("Banding Detection", &bandingDetection);
-        ImGui::Text("Error Decreased By: %d", errorImprovement);
+        ImGui::Text("Pipeline Iterations");
+        ImGui::SetNextItemWidth(-FLT_MIN);
+        ImGui::SliderInt("##Pipeline Iterations", &PIPELINE_ITERATIONS, 1, 10);
 
         // Combo to select erosion mode
+        ImGui::Text("Erosion Mode");
         const char *erosionModes[] = {"Constant Erosion Iterations", "Linear Erosion Iterations (On Layer #)"};
         ImGui::SetNextItemWidth(-FLT_MIN);
         ImGui::Combo("##Erosion Mode", &erosionMode, erosionModes, IM_ARRAYSIZE(erosionModes));
+
+        if (!getPixelArtImage().getDrawnPath().empty() || getPixelArtImage().getGenerator().has_value()) {
+            ImGui::Text("Translation Factor");
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            ImGui::SliderFloat("##TranslationFactor", &TRANSLATION_FACTOR, 0.0f, 2.0f, "%.3f");
+        }
 
         // Show slider for linear erosion factor only if linear erosion is selected
         if (erosionMode == 1) {
             ImGui::Text("Linear Erosion Factor");
             ImGui::SetNextItemWidth(-FLT_MIN);
-            ImGui::SliderFloat("##LinearErosionFactor", &linearErosionFactor, 0.0f, 1.0f, "%.3f");
+            ImGui::SliderFloat("##LinearErosionFactor", &LINEAR_EROSION_FACTOR, 0.0f, 2.0f, "%.3f");
         }
 
-        ImGui::Text("# Of Expansion Iterations");
+        ImGui::Text("Expansion Iterations");
         ImGui::SetNextItemWidth(-FLT_MIN);
-        ImGui::SliderInt("##ExpansionIterations", &expansionIterations, 0, 5);
+        ImGui::SliderInt("##ExpansionIterations", &EXPANSION_ITERATIONS, 0, 5);
 
 
-        ImGui::Text("Probability to Add Pixel");
+        ImGui::Text("Probability to Add Candidate Pixel");
         ImGui::SetNextItemWidth(-FLT_MIN);
-        ImGui::SliderFloat("##ProbabilityToAddPixel", &probabilityToAddPixel, 0.0f, 1.0f, "%.3f");
+        ImGui::SliderFloat("##ProbabilityToAddPixel", &PROB_ADD_CANDIDATE_PIXEL, 0.0f, 1.0f, "%.3f");
+
+        ImGui::Separator();
+        ImGui::Text("Error Decreased By: %d", errorImprovement);
     }
 
     void renderDebugUI() override {
         ImGui::Checkbox("Debug View", &showDebug);
 
         if (!showDebug) {
-            getCanvas().clearDebugPixels(); // Clear if debug turned off
+            getPixelArtImage().clearDebugPixels(); // Clear if debug turned off
             return;
         }
 
@@ -144,15 +157,15 @@ public:
         ImGui::SetNextItemWidth(-FLT_MIN);
         ImGui::Combo("##Select Layer", &selectedLayer, labelPointers.data(), static_cast<int>(labelPointers.size()));
 
-        getCanvas().clearDebugPixels();
+        getPixelArtImage().clearDebugPixels();
         const cv::Mat &layer = debugLayers[selectedLayer];
-        int width = getCanvas().getWidth();
-        int height = getCanvas().getHeight();
+        int width = getPixelArtImage().getWidth();
+        int height = getPixelArtImage().getHeight();
 
         for (int y = 0; y < height; ++y) {
             for (int x = 0; x < width; ++x) {
                 if (layer.at<uchar>(y, x) > 0) {
-                    getCanvas().setDebugPixel({x, y}, Color(255, 0, 0)); // Red color for debug
+                    getPixelArtImage().setDebugPixel({x, y}, Color(255, 0, 0)); // Red color for debug
                 }
             }
         }
@@ -160,14 +173,14 @@ public:
         if (showNeighborCandidates && selectedLayer < debugNeighborCandidates.size()) {
             for (const auto &[x, y]: debugNeighborCandidates[selectedLayer]) {
                 if (x >= 0 && x < width && y >= 0 && y < height) {
-                    getCanvas().setDebugPixel({x, y}, Color(0, 0, 255)); // Blue
+                    getPixelArtImage().setDebugPixel({x, y}, Color(0, 0, 255)); // Blue
                 }
             }
         }
     }
 
 private:
-    Canvas originalCanvas = Canvas(0, 0);
+    PixelArtImage originalCanvas = PixelArtImage(0, 0);
     std::default_random_engine generator{42}; // Seed for reproducibility
     std::vector<cv::Mat> debugLayers;
     bool showDebug = false;
@@ -175,14 +188,17 @@ private:
     std::vector<std::unordered_set<std::pair<int, int> > > debugNeighborCandidates;
     bool showNeighborCandidates = false;
     int erosionMode = 0; // 0 = constant, 1 = linear
-    float linearErosionFactor = 1.0f; // Default factor
-    int expansionIterations = 1;
-    float probabilityToAddPixel = 0.3f;
     bool bandingDetection = false;
     int errorImprovement = 0;
 
+    float LINEAR_EROSION_FACTOR = 1.0f; // Default factor
+    float TRANSLATION_FACTOR = 1.0f; // Default factor
+    int EXPANSION_ITERATIONS = 1;
+    float PROB_ADD_CANDIDATE_PIXEL = 0.3f;
+    int PIPELINE_ITERATIONS = 10;
+
     void constructCorrectedCanvas(int width, int height, std::vector<std::pair<Color, cv::Mat> > layers,
-                                  Canvas &correctedCanvas) {
+                                  PixelArtImage &correctedCanvas) {
         correctedCanvas.fill({255, 255, 255});
 
         // Fill subject outline and first layer
@@ -198,10 +214,10 @@ private:
         std::optional<cv::Mat> drawnPathMask = std::nullopt;
 
         // First try to get the generator pixel
-        if (auto dp = getCanvas().getGenerator(); dp.has_value()) {
+        if (auto dp = getPixelArtImage().getGenerator(); dp.has_value()) {
             generator = dp;
         } else {
-            const auto &drawnPath = getCanvas().getDrawnPath();
+            const auto &drawnPath = getPixelArtImage().getDrawnPath();
             if (!drawnPath.empty()) {
                 std::vector<cv::Point> contour;
                 for (const Pixel &p: drawnPath)
@@ -254,7 +270,7 @@ private:
                 for (int y = 0; y < height; ++y)
                     for (int x = 0; x < width; ++x)
                         if (currentMask.at<uchar>(y, x)) {
-                            float attenuation = 1.0f / (static_cast<float>(layers.size()) - i);
+                            float attenuation = TRANSLATION_FACTOR * 1.0f / (static_cast<float>(layers.size()) - i);
                             int newX = x + dx * attenuation;
                             int newY = y + dy * attenuation;
                             if (newX >= 0 && newX < width && newY >= 0 && newY < height)
@@ -270,12 +286,12 @@ private:
                 cv::erode(translatedMask, modified, kernel, cv::Point(-1, -1), 1);
             } else {
                 cv::erode(translatedMask, modified, kernel, cv::Point(-1, -1),
-                          static_cast<int>(linearErosionFactor * i));
+                          static_cast<int>(LINEAR_EROSION_FACTOR * i));
             }
 
             debugLayers.push_back(translatedMask);
             std::unordered_set<std::pair<int, int> > neighbors;
-            expandShape(modified, &neighbors, expansionIterations);
+            expandShape(modified, &neighbors, EXPANSION_ITERATIONS);
             debugNeighborCandidates.push_back(std::move(neighbors));
 
             for (int y = 0; y < height; ++y)
@@ -296,7 +312,7 @@ private:
     }
 
 
-    static std::vector<std::pair<Color, cv::Mat> > extract_layers(const Canvas &canvas) {
+    static std::vector<std::pair<Color, cv::Mat> > extract_layers(const PixelArtImage &canvas) {
         int width = canvas.getWidth();
         int height = canvas.getHeight();
 
@@ -380,22 +396,7 @@ private:
             }
             // First pass: probabilistic addition
             for (const auto &[pt, count]: candidate_counts) {
-                if (count == 3 && dist(generator) < probabilityToAddPixel) {
-                    shape.insert(pt);
-                }
-            }
-
-            candidate_counts.clear();
-            for (const auto &pt: shape) {
-                for (const auto &[dx, dy]: neighbors) {
-                    auto neighbor = std::make_pair(pt.first + dx, pt.second + dy);
-                    if (!shape.contains(neighbor))
-                        candidate_counts[neighbor]++;
-                }
-            }
-
-            for (const auto &[pt, count]: candidate_counts) {
-                if (count == 4) {
+                if (count == 3 && dist(generator) < PROB_ADD_CANDIDATE_PIXEL) {
                     shape.insert(pt);
                 }
             }
@@ -407,27 +408,16 @@ private:
                     temp.at<uchar>(y, x) = 255;
             }
 
-            // Apply dilation as deterministic smoothing
+            // Second pass: apply a dilation to smooth out the result
             cv::Mat kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3));
             cv::dilate(temp, dilated, kernel, cv::Point(-1, -1), 1);
-        }
-
-        // Optionally update candidate neighbors (for debugging)
-        if (out_candidate_neighbors) {
-            for (int y = 0; y < dilated.rows; ++y) {
-                for (int x = 0; x < dilated.cols; ++x) {
-                    if (dilated.at<uchar>(y, x) > 0 && !shape.contains({x, y})) {
-                        out_candidate_neighbors->insert({x, y});
-                    }
-                }
-            }
         }
 
         // Final result: union of original shape and dilated result
         input_shape = dilated;
     }
 
-    static cv::Mat extractSubjectMask(const Canvas &canvas) {
+    static cv::Mat extractSubjectMask(const PixelArtImage &canvas) {
         int width = canvas.getWidth();
         int height = canvas.getHeight();
 

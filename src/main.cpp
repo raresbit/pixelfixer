@@ -8,10 +8,9 @@
 #include <string>
 #include <sstream>
 
-#include "../include/Canvas.h"
+#include "../include/PixelArtImage.h"
 #include "../include/Algorithm.h"
 #include "../include/PillowShadingCorrection.h"
-#include "../include/Dithering.h"
 #include "../include/BandingDetection.h"
 #include "../include/GeneralBandingCorrection.h"
 
@@ -101,7 +100,7 @@ std::vector<std::string> getImageFilesFromDirectory(const std::string &path) {
 }
 
 
-GLuint createTextureFromCanvas(const Canvas &canvas) {
+GLuint createTextureFromCanvas(const PixelArtImage &canvas) {
     GLuint textureID;
     glGenTextures(1, &textureID);
     glBindTexture(GL_TEXTURE_2D, textureID);
@@ -184,11 +183,11 @@ std::string getUniqueFilePath(const std::string& basePath) {
 
 
 void renderLeftMenu(int &mode, const std::vector<std::string> &imageFiles,
-                    std::string &selectedImage, GLuint &canvasTexture, Canvas &canvas,
+                    std::string &selectedImage, GLuint &canvasTexture, PixelArtImage &canvas,
                     std::vector<Pixel> &drawnPath,
                     const std::vector<std::unique_ptr<Algorithm> > &algorithms,
                     ImFont *headerFont) {
-    ImGui::SetNextWindowSize(ImVec2(240, 0), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(260, 540), ImGuiCond_Always);
     ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
     ImGui::Begin("Menu", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
                                   ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_AlwaysAutoResize);
@@ -323,18 +322,18 @@ void renderLeftMenu(int &mode, const std::vector<std::string> &imageFiles,
 
     if (saveMessageTime >= 0.0f && ImGui::GetTime() - saveMessageTime < 2.0f) {
         ImVec4 color = saveSuccess ? ImVec4(0.2f, 1.0f, 0.2f, 1.0f) : ImVec4(1.0f, 0.2f, 0.2f, 1.0f);
-        const char* message = saveSuccess ? "Canvas saved successfully!" : "Failed to save canvas.";
+        const char* message = saveSuccess ? "PixelArtImage saved successfully!" : "Failed to save canvas.";
         ImGui::TextColored(color, "%s", message);
     }
 
     ImGui::End();
 }
 
-void renderCanvas(int mode, const std::string &selectedImage, GLuint &canvasTexture, Canvas &canvas,
+void renderCanvas(int mode, const std::string &selectedImage, GLuint &canvasTexture, PixelArtImage &canvas,
                   std::vector<Pixel> &drawnPath, bool &mousePressed,
                   const std::vector<std::unique_ptr<Algorithm> > &algorithms,
                   float& zoom) {
-    ImGui::SetNextWindowPos(ImVec2(240, 0), ImGuiCond_Always);
+    ImGui::SetNextWindowPos(ImVec2(260, 0), ImGuiCond_Always);
     ImGui::SetNextWindowSize(ImVec2(480, 470), ImGuiCond_Always);
     ImGui::Begin("Pixel Artwork", nullptr,
                  ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
@@ -432,6 +431,7 @@ void renderCanvas(int mode, const std::string &selectedImage, GLuint &canvasText
 
                 // Highlight clusters on hover (in red color)
                 ImDrawList* draw_list = ImGui::GetWindowDrawList();
+                canvas.clearDebugLines();
                 const float lineOffset = 0.5f * zoom;  // Adjust this offset as needed for line rendering
 
                 // Hover effect - Check if the mouse is over a cluster
@@ -457,21 +457,19 @@ void renderCanvas(int mode, const std::string &selectedImage, GLuint &canvasText
                                     }
                                 }
 
-                                // Draw hovered cluster in red (even if it's not selected)
-                                for (auto& p : segment) {
-                                    ImVec2 p1 = ImVec2(canvas_pos.x + p.pos.x * zoom + lineOffset, canvas_pos.y + p.pos.y * zoom + lineOffset);
-                                    draw_list->AddCircle(p1, 3.0f, IM_COL32(255, 0, 0, 255), 12);
-                                }
+                                // Draw hovered cluster
+                                canvas.drawRectangle(segment, {0, 255, 0});
                                 break;
                             }
                         }
                     }
                 }
-
                 if (canvas.getSelectedSegment().size() > 0) {
+                    canvas.drawRectangle(canvas.getSelectedSegment(), {0, 255, 0});
+
                     for (const auto& p : canvas.getSelectedSegment()) {
                         ImVec2 p1 = ImVec2(canvas_pos.x + p.pos.x * zoom + lineOffset, canvas_pos.y + p.pos.y * zoom + lineOffset);
-                        draw_list->AddCircle(p1, 3.0f, IM_COL32(0, 255, 0, 255), 12);
+                        draw_list->AddCircle(p1, zoom/3.0f, IM_COL32(0, 255, 0, 255), 12);
                     }
                 }
 
@@ -492,7 +490,7 @@ void renderCanvas(int mode, const std::string &selectedImage, GLuint &canvasText
     ImGui::End(); // Close the canvas window before adding the slider at the bottom
 
     // Create a new window just for the slider at the bottom
-    ImGui::SetNextWindowPos(ImVec2(240, 470), ImGuiCond_Always);
+    ImGui::SetNextWindowPos(ImVec2(260, 470), ImGuiCond_Always);
     ImGui::SetNextWindowSize(ImVec2(480, 70), ImGuiCond_Always); // Height of the slider window
     ImGui::Begin("Zoom Controls", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
                                       ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar);
@@ -504,10 +502,9 @@ void renderCanvas(int mode, const std::string &selectedImage, GLuint &canvasText
     ImGui::End(); // End the slider window
 }
 
-std::vector<std::unique_ptr<Algorithm> > loadAlgorithms(Canvas &canvas) {
+std::vector<std::unique_ptr<Algorithm> > loadAlgorithms(PixelArtImage &canvas) {
     std::vector<std::unique_ptr<Algorithm> > algos;
     algos.emplace_back(std::make_unique<PillowShadingCorrection>(canvas));
-    algos.emplace_back(std::make_unique<Dithering>(canvas));
     algos.emplace_back(std::make_unique<GeneralBandingCorrection>(canvas));
     algos.emplace_back(std::make_unique<BandingDetection>(canvas));
     return algos;
@@ -524,7 +521,7 @@ void runMainLoop(GLFWwindow *window) {
     std::vector<std::string> imageFiles = getImageFilesFromDirectory("../assets/images");
     std::string selectedImage = imageFiles.empty() ? "" : imageFiles[0];
 
-    Canvas canvas = Canvas(32, 32);
+    PixelArtImage canvas = PixelArtImage(32, 32);
     GLuint canvasTexture = 0;
     canvas.fill({255, 255, 255});
     int mode = 0;

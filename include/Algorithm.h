@@ -6,17 +6,17 @@
 #define ALGORITHM_H
 
 #pragma once
-#include "Canvas.h"
+#include "PixelArtImage.h"
 #include <string>
 
 class Algorithm {
 public:
     virtual ~Algorithm() = default;
-    explicit Algorithm(Canvas& canvasToSet) : canvas(canvasToSet) {}
+    explicit Algorithm(PixelArtImage& canvasToSet) : canvas(canvasToSet) {}
 
     [[nodiscard]] virtual std::string name() const = 0;
 
-    [[nodiscard]] Canvas& getCanvas() const {
+    [[nodiscard]] PixelArtImage& getPixelArtImage() const {
         return this->canvas;
     }
     virtual void run() = 0;
@@ -27,11 +27,11 @@ public:
         ImGui::Text("Not implemented.");
     }
     virtual void reset() {
-        getCanvas().clearProcessedPixels();
-        getCanvas().clearDebugPixels();
+        getPixelArtImage().clearProcessedPixels();
+        getPixelArtImage().clearDebugPixels();
     }
 private:
-    Canvas& canvas;
+    PixelArtImage& canvas;
 };
 
 
