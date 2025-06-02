@@ -72,13 +72,8 @@ public:
 
         errorImprovement = originalError - error;
 
+        canvas.clearDebugLines();
         canvas.setProcessedPixels(bestCorrectedCanvas);
-
-        if (bandingDetection) {
-            canvas.setDebugLines(bestCorrectedCanvas.getDebugLines());
-        } else {
-            canvas.clearDebugLines();
-        }
     }
 
     void reset() override {

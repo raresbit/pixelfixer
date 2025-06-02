@@ -9,7 +9,6 @@
 #include "Algorithm.h"
 #include <vector>
 #include <iostream>
-#include <opencv2/opencv.hpp>
 #include "../include/PixelArtImage.h"
 #include <glm/glm.hpp>
 #include <unordered_set>
@@ -39,59 +38,103 @@ public:
             getPixelArtImage().clearHighlightedPixels();
         }
 
-        ImGui::Checkbox("Automatic", &automatic);
+        // Operation dropdown
+        const char *operations[] = {"Shrink (Copy Neigh. Color)", "Shrink (Average With Neigh. Color)", "Expand Segment"};
+        ImGui::Text("What To Do?");
+        ImGui::SetNextItemWidth(-FLT_MIN);
+        ImGui::Combo("##Operation", &operationIndex, operations, IM_ARRAYSIZE(operations));
 
-        if (!automatic) {
-            // Operation dropdown
-            const char *operations[] = {"Shrink Segment", "Expand Segment", "Remove Entirely", "Alter Colors"};
-            ImGui::Text("What To Do?");
-            ImGui::SetNextItemWidth(-FLT_MIN);
-            ImGui::Combo("##Operation", &operationIndex, operations, IM_ARRAYSIZE(operations));
-
-            if (operationIndex == 0 || operationIndex == 1 || operationIndex == 3) {
-                ImGui::Text("Endpoints To Alter:");
-                if (horizontal) {
-                    ImGui::Checkbox("Left", &alterLeftEdge);
-                    ImGui::SameLine();
-                    ImGui::Checkbox("Right", &alterRightEdge);
-                } else {
-                    ImGui::Checkbox("Top", &alterTopEdge);
-                    ImGui::SameLine();
-                    ImGui::Checkbox("Bottom", &alterBottomEdge);
-                }
-            }
+        ImGui::Text("Endpoints To Alter:");
+        if (horizontal) {
+            ImGui::Checkbox("Left", &alterLeftEdge);
+            ImGui::SameLine();
+            ImGui::Checkbox("Right", &alterRightEdge);
+        } else {
+            ImGui::Checkbox("Top", &alterTopEdge);
+            ImGui::SameLine();
+            ImGui::Checkbox("Bottom", &alterBottomEdge);
         }
     }
 
     void run() override {
-        if (automatic) {
-            alterLeftEdge = true;
-            alterRightEdge = true;
-            alterTopEdge = true;
-            alterBottomEdge = true;
-        }
-
-        if (operationIndex == 2) {
-            colorMode = 0; // Mode 0: take the majority neighbor color
-        } else {
-            colorMode = 1; // Mode 1: take the endpoint continuation color
-        }
-
         PixelArtImage &image = getPixelArtImage();
 
         auto allClusters = image.getClusters();
         auto selectedSegment = image.getSelectedSegment();
-        if (selectedSegment.empty()) return;
 
-        // Extract adjacent segments to the selected segments
-        // for horizontal segments, consider only the top and bottom segments
-        // for vertical segments, consider only the left and right segments
-        // (banding can only happen between the selected segment and these neighboring ones)
-        std::vector<std::vector<Pixel> > neighboringSegments = extractNeighboringSegments(allClusters, selectedSegment);
+        if (selectedSegment.empty()) {
+            // Run the algorithm on all segments until banding error converges
+            auto detection = std::make_unique<BandingDetection>(image);
+            std::vector<std::vector<Pixel> > affectedSegments = detection->getUniqueAffectedSegments();
 
-        // Banding detection and correction
-        if (detectBanding(selectedSegment, neighboringSegments)) {
-            image.setPixels(getReplacements(selectedSegment, neighboringSegments, image));
+            while (!affectedSegments.empty()) {
+                // Select the first affected segment
+                for (const auto& affectedSegment: affectedSegments) {
+
+                    // Determine orientation of the selected segment (horizontal or vertical)
+                    // by checking bounding box dimensions
+                    int minX = std::numeric_limits<int>::max();
+                    int maxX = std::numeric_limits<int>::min();
+                    int minY = std::numeric_limits<int>::max();
+                    int maxY = std::numeric_limits<int>::min();
+
+                    for (const Pixel &px: affectedSegment) {
+                        if (px.pos.x < minX) minX = px.pos.x;
+                        if (px.pos.x > maxX) maxX = px.pos.x;
+                        if (px.pos.y < minY) minY = px.pos.y;
+                        if (px.pos.y > maxY) maxY = px.pos.y;
+                    }
+
+                    // Horizontal if width > height, else vertical
+                    horizontal = (maxX - minX) >= (maxY - minY);
+
+                    image.segmentClusters(horizontal);
+                    allClusters = image.getClusters();
+
+                    // Find the segment in allClusters that matches 'first' by comparing contents
+                    selectedSegment.clear();
+                    for (const auto &cluster: allClusters) {
+                        for (const auto &seg: cluster) {
+                            if (seg.size() == affectedSegment.size()) {
+                                bool equal = true;
+                                for (size_t i = 0; i < seg.size(); ++i) {
+                                    if (seg[i].pos != affectedSegment[i].pos || seg[i].color != affectedSegment[i].color) {
+                                        equal = false;
+                                        break;
+                                    }
+                                }
+                                if (equal) {
+                                    selectedSegment = seg;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    image.setSelectedSegment(selectedSegment);
+
+                    // Extract neighboring segments based on current selection
+                    std::vector<std::vector<Pixel> > neighboringSegments = extractNeighboringSegments(
+                        allClusters, selectedSegment);
+
+                    // Apply banding correction
+                    image.setPixels(getReplacements(selectedSegment, neighboringSegments, image));
+                }
+                detection = std::make_unique<BandingDetection>(image);
+                affectedSegments = detection->getUniqueAffectedSegments();
+            }
+        } else {
+            // Extract adjacent segments to the selected segments
+            // for horizontal segments, consider only the top and bottom segments
+            // for vertical segments, consider only the left and right segments
+            // (banding can only happen between the selected segment and these neighboring ones)
+            std::vector<std::vector<Pixel> > neighboringSegments = extractNeighboringSegments(
+                allClusters, selectedSegment);
+
+            // Banding detection and correction
+            if (detectBanding(selectedSegment, neighboringSegments)) {
+                image.setPixels(getReplacements(selectedSegment, neighboringSegments, image));
+            }
         }
 
         // Final cleanup
@@ -110,13 +153,11 @@ public:
 private:
     PixelArtImage originalCanvas = PixelArtImage(0, 0);
     bool horizontal = true;
-    bool automatic = true;
     bool alterLeftEdge = true;
     bool alterRightEdge = true;
     bool alterTopEdge = true;
     bool alterBottomEdge = true;
     int operationIndex = 0;
-    int colorMode = 0;
 
 
     [[nodiscard]] bool detectBanding(const std::vector<Pixel> &selectedSegment,
@@ -225,7 +266,6 @@ private:
             alignEnd = (segEnd.y == neighborEnd.y);
 
             if (alignStart && alignEnd) return std::string("both");
-
         } else {
             // Horizontal case: check if horizontally adjacent (y differs by 1)
             sticked = (std::abs(segStart.y - neighborStart.y) == 1);
@@ -256,30 +296,19 @@ private:
 
         switch (operationIndex) {
             case 0:
-            case 3:
-                return handleShrinkOrColorChange(segment, neighboringSegments, canvas);
             case 1:
-                return handleExpansion(segment, neighboringSegments, canvas);
+                return handleShrinkOrColorChange(segment, neighboringSegments, canvas);
             case 2:
-                return handleRemoval(segment, canvas);
+                return handleExpansion(segment, neighboringSegments, canvas);
             default:
                 return replacements;
         }
     }
 
-    std::vector<Pixel> handleRemoval(std::vector<Pixel> &segment, const PixelArtImage &canvas) const {
-        std::vector<Pixel> replacements;
 
-        for (const auto &p: segment) {
-            Color newColor = determineReplacementColor(p.pos, canvas, p.color);
-            replacements.emplace_back(Pixel{newColor, p.pos});
-        }
-
-        segment.clear();
-        return replacements;
-    }
-
-    std::vector<Pixel> handleShrinkOrColorChange(std::vector<Pixel> &segment, const std::vector<std::vector<Pixel> > &neighboringSegments, const PixelArtImage &canvas) const {
+    std::vector<Pixel> handleShrinkOrColorChange(std::vector<Pixel> &segment,
+                                                 const std::vector<std::vector<Pixel> > &neighboringSegments,
+                                                 const PixelArtImage &canvas) const {
         std::vector<Pixel> replacements;
 
         struct EdgeOp {
@@ -327,12 +356,12 @@ private:
                 segment.pop_back();
         };
 
-        for (const EdgeOp &e : edges) {
+        for (const EdgeOp &e: edges) {
             applyEdge(e);
         }
 
         if (!segment.empty() && detectBanding(segment, neighboringSegments)) {
-            for (const EdgeOp &e : edges) {
+            for (const EdgeOp &e: edges) {
                 applyEdge(e);
             }
         }
@@ -340,7 +369,9 @@ private:
         return replacements;
     }
 
-    std::vector<Pixel> handleExpansion(std::vector<Pixel> &segment, const std::vector<std::vector<Pixel> > &neighboringSegments, const PixelArtImage &canvas) const {
+    std::vector<Pixel> handleExpansion(std::vector<Pixel> &segment,
+                                       const std::vector<std::vector<Pixel> > &neighboringSegments,
+                                       const PixelArtImage &canvas) const {
         std::vector<Pixel> replacements;
         const Color originalColor = segment.front().color;
 
@@ -357,7 +388,7 @@ private:
             if (candidate.x < 0 || candidate.x >= canvas.getWidth() ||
                 candidate.y < 0 || candidate.y >= canvas.getHeight()) {
                 return;
-                }
+            }
 
             Pixel newPixel = {originalColor, candidate};
 
@@ -386,12 +417,12 @@ private:
             }
         };
 
-        for (const auto &op : ops) {
+        for (const auto &op: ops) {
             applyOp(op);
         }
 
         if (!segment.empty() && detectBanding(segment, neighboringSegments)) {
-            for (const auto &op : ops) {
+            for (const auto &op: ops) {
                 applyOp(op); // expand one more time
             }
         }
@@ -409,8 +440,8 @@ private:
 
 
     [[nodiscard]] Color determineReplacementColor(Pos pos, const PixelArtImage &canvas,
-                                                  const Color &removedColor = Color{-1, -1, -1},
-                                                  EdgeDirection edge = EdgeDirection::None) const {
+                                                         const Color &removedColor = Color{-1, -1, -1},
+                                                         EdgeDirection edge = EdgeDirection::None) const {
         const int width = canvas.getWidth();
         const int height = canvas.getHeight();
 
@@ -442,101 +473,37 @@ private:
             return Color{255, 255, 255}; // fallback
         }
 
-        // === OperationIndex == 3 → use averaging ===
-        if (operationIndex == 3) {
-            if (colorMode == 0) {
-                // Average all neighbor colors
-                int r = 0, g = 0, b = 0;
-                for (const auto &c: neighborColors) {
-                    r += c.r;
-                    g += c.g;
-                    b += c.b;
-                }
-                int n = static_cast<int>(neighborColors.size());
-                return Color{r / n, g / n, b / n};
-            } else if (colorMode == 1) {
-                // Use continuation logic and average with removedColor
-                Pos neighborPos;
-                switch (edge) {
-                    case EdgeDirection::Left: neighborPos = {pos.x - 1, pos.y};
-                        break;
-                    case EdgeDirection::Right: neighborPos = {pos.x + 1, pos.y};
-                        break;
-                    case EdgeDirection::Top: neighborPos = {pos.x, pos.y - 1};
-                        break;
-                    case EdgeDirection::Bottom: neighborPos = {pos.x, pos.y + 1};
-                        break;
-                    default: neighborPos = pos;
-                        break;
-                }
 
-                Color continuation = removedColor;
-                if (neighborPos.x >= 0 && neighborPos.y >= 0 &&
-                    neighborPos.x < width && neighborPos.y < height) {
-                    Color c = canvas.getPixel(neighborPos).color;
-                    if (c != removedColor) {
-                        continuation = c;
-                    }
-                }
-
-                return Color{
-                    (removedColor.r + continuation.r) / 2,
-                    (removedColor.g + continuation.g) / 2,
-                    (removedColor.b + continuation.b) / 2
-                };
-            }
+        // Continuation logic using edge direction only
+        Pos neighborPos;
+        switch (edge) {
+            case EdgeDirection::Left: neighborPos = {pos.x - 1, pos.y};
+                break;
+            case EdgeDirection::Right: neighborPos = {pos.x + 1, pos.y};
+                break;
+            case EdgeDirection::Top: neighborPos = {pos.x, pos.y - 1};
+                break;
+            case EdgeDirection::Bottom: neighborPos = {pos.x, pos.y + 1};
+                break;
+            default: return Color{255, 255, 255}; // No directional guidance
         }
 
-        // === OperationIndex != 3 ===
-        if (colorMode == 0) {
-            // Majority logic
-            std::map<Color, int, bool(*)(const Color &, const Color &)> freq([](const Color &a, const Color &b) {
-                return std::tie(a.r, a.g, a.b) < std::tie(b.r, b.g, b.b);
-            });
-
-            for (const auto &c: neighborColors) {
-                freq[c]++;
-            }
-
-            int maxCount = 0;
-            std::vector<Color> mostFrequent;
-            for (const auto &[color, count]: freq) {
-                if (count > maxCount) {
-                    maxCount = count;
-                    mostFrequent = {color};
-                } else if (count == maxCount) {
-                    mostFrequent.push_back(color);
-                }
-            }
-
-            static std::default_random_engine generator{42}; // reproducible
-            std::uniform_int_distribution<> distrib(0, static_cast<int>(mostFrequent.size()) - 1);
-            return mostFrequent[distrib(generator)];
-        } else if (colorMode == 1) {
-            // Continuation logic using edge direction only
-            Pos neighborPos;
-            switch (edge) {
-                case EdgeDirection::Left: neighborPos = {pos.x - 1, pos.y};
-                    break;
-                case EdgeDirection::Right: neighborPos = {pos.x + 1, pos.y};
-                    break;
-                case EdgeDirection::Top: neighborPos = {pos.x, pos.y - 1};
-                    break;
-                case EdgeDirection::Bottom: neighborPos = {pos.x, pos.y + 1};
-                    break;
-                default: return Color{255, 255, 255}; // No directional guidance
-            }
-
-            if (neighborPos.x >= 0 && neighborPos.y >= 0 &&
-                neighborPos.x < width && neighborPos.y < height) {
-                Color cont = canvas.getPixel(neighborPos).color;
-                if (cont != removedColor) {
+        if (neighborPos.x >= 0 && neighborPos.y >= 0 &&
+            neighborPos.x < width && neighborPos.y < height) {
+            Color cont = canvas.getPixel(neighborPos).color;
+            if (cont != removedColor) {
+                if (operationIndex == 0) {
                     return cont;
+                } else {
+                    auto avgR = (removedColor.r + cont.r) / 2;
+                    auto avgG = (removedColor.g + cont.g) / 2;
+                    auto avgB = (removedColor.b + cont.b) / 2;
+                    return {avgR, avgG, avgB}; // average
                 }
             }
         }
 
-        return Color{255, 255, 255}; // ultimate fallback
+        return removedColor;
     }
 };
 

@@ -50,6 +50,53 @@ public:
         return error;
     }
 
+
+    [[nodiscard]] std::vector<std::vector<Pixel>> getUniqueAffectedSegments() {
+        // Run detection both horizontally and vertically
+        debugPixels.clear();
+        affectedSegmentPairs.clear();  // Clear previous results
+        getPixelArtImage().clearDebugLines();
+
+        bool origHorizontal = horizontal;
+
+        horizontal = true;
+        getPixelArtImage().segmentClusters(true);
+        runDetection();
+
+        horizontal = false;
+        getPixelArtImage().segmentClusters(false);
+        runDetection();
+
+        horizontal = origHorizontal;
+
+        getPixelArtImage().clearDebugLines();
+
+
+        // Save unique segments
+        std::vector<std::vector<Pixel>> flattened;
+        std::unordered_set<const std::vector<Pixel>*> seen;
+
+        for (const auto& pair : affectedSegmentPairs) {
+            const auto* segA = &pair.first;
+            const auto* segB = &pair.second;
+
+            if (!seen.contains(segA)) {
+                flattened.push_back(*segA);
+                seen.insert(segA);
+            }
+
+            if (!seen.contains(segB)) {
+                flattened.push_back(*segB);
+                seen.insert(segB);
+            }
+        }
+
+        affectedSegmentPairs.clear();  // Clear previous results
+
+        return flattened;
+    }
+
+
     void run() override {
         for (int i = 0; i < getPixelArtImage().getWidth(); i++) {
             for (int j = 0; j < getPixelArtImage().getHeight(); j++) {
@@ -109,6 +156,7 @@ private:
     bool horizontal = true;
     std::vector<Pixel> debugPixels;
     int error = 0;
+    std::vector<std::pair<std::vector<Pixel>, std::vector<Pixel>>> affectedSegmentPairs;
     int currentSelection = 2;
 
 
@@ -173,6 +221,8 @@ private:
                                         std::vector<Pixel> combined = segmentA;
                                         combined.insert(combined.end(), segmentB.begin(), segmentB.end());
                                         canvas.drawRectangle(combined, red);
+
+                                        affectedSegmentPairs.emplace_back(segmentA, segmentB);
 
                                         foundMatchForSegmentA = true;
                                         break;
