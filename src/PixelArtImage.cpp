@@ -3,10 +3,10 @@
 //
 
 #include "../include/PixelArtImage.h"
-#include "../include/BandingDetection.h"
 #include <iostream>
 #include <ranges>
 #include <opencv2/core/mat.hpp>
+#include <utility>
 
 #include "stb_image.h"
 #include "stb_image_write.h"
@@ -28,6 +28,7 @@ PixelArtImage &PixelArtImage::operator=(const PixelArtImage &other) {
     debugPixels = other.debugPixels;
     debugLines = other.debugLines;
     highlightedPixels = other.highlightedPixels;
+    affectedSegments = other.affectedSegments;
     clusters = other.clusters;
 
     return *this;
@@ -51,9 +52,7 @@ bool PixelArtImage::loadFromFile(const std::string &filepath) {
     debugPixels.resize(width * height);
     clearHighlightedPixels();
     highlightedPixels.resize(width * height);
-    auto detection = std::make_unique<BandingDetection>(*this);
     clusters = segmentClusters();
-    affectedSegments = detection->getUniqueAffectedSegments();
     selectedSegment.clear();
     clearDrawnPath();
 
@@ -324,9 +323,21 @@ std::vector<std::vector<Pixel>> PixelArtImage::getAffectedSegments() const {
     return affectedSegments;
 }
 
+void PixelArtImage::setAffectedSegments(std::vector<std::vector<Pixel>> affectedSegs) {
+    affectedSegments = std::move(affectedSegs);
+}
+
 void PixelArtImage::setSelectedSegment(const std::vector<Pixel> &segment) {
     clearSelectedSegment();
     selectedSegment.assign(segment.begin(), segment.end());
+}
+
+void PixelArtImage::setError(int err) {
+    error = err;
+}
+
+int PixelArtImage::getError() const {
+    return error;
 }
 
 cv::Mat PixelArtImage::extractSubject(const PixelArtImage &canvas) {
@@ -335,7 +346,7 @@ cv::Mat PixelArtImage::extractSubject(const PixelArtImage &canvas) {
 
     cv::Mat mask(height, width, CV_8UC1, cv::Scalar(0));
 
-    constexpr int threshold = 250; // tolerance for "near-white"
+    constexpr int threshold = 254; // tolerance for "near-white"
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
             Color color = canvas.getPixel({x, y}).color;

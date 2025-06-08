@@ -21,39 +21,30 @@ public:
 
 
     [[nodiscard]] std::string name() const override {
-        return "General Banding Correction";
+        return "Banding Correction";
     }
 
     void renderUI() override {
-        if (horizontal)
-            ImGui::Text("Horizontal Segments");
-        else
-            ImGui::Text("Vertical Segments");
-
-        ImGui::SameLine();
-        if (ImGui::Button("Switch")) {
-            horizontal = !horizontal;
-            getPixelArtImage().segmentClusters(horizontal);
-            getPixelArtImage().clearSelectedSegment();
-            getPixelArtImage().clearHighlightedPixels();
-        }
+        // Vertical space
+        ImGui::Dummy(ImVec2(0.0f, 10.0f));
 
         // Operation dropdown
         const char *operations[] = {"Shrink (Copy Neigh. Color)", "Shrink (Average With Neigh. Color)", "Expand Segment"};
-        ImGui::Text("What To Do?");
+        ImGui::Text("Correction Strategy:");
         ImGui::SetNextItemWidth(-FLT_MIN);
         ImGui::Combo("##Operation", &operationIndex, operations, IM_ARRAYSIZE(operations));
 
-        ImGui::Text("Endpoints To Alter:");
-        if (horizontal) {
-            ImGui::Checkbox("Left", &alterLeftEdge);
-            ImGui::SameLine();
-            ImGui::Checkbox("Right", &alterRightEdge);
-        } else {
-            ImGui::Checkbox("Top", &alterTopEdge);
-            ImGui::SameLine();
-            ImGui::Checkbox("Bottom", &alterBottomEdge);
-        }
+        ImGui::Text("Segment Endpoints To Alter:");
+        ImGui::Checkbox("Left/Top", &alterLeftEdge);
+        alterTopEdge = alterLeftEdge;
+        ImGui::SameLine();
+        ImGui::Checkbox("Right/Bottom", &alterRightEdge);
+        alterBottomEdge = alterRightEdge;
+
+
+        ImGui::Separator();
+
+        ImGui::Text("Banding pair count: %d", getPixelArtImage().getError());
     }
 
     void run() override {
@@ -65,7 +56,7 @@ public:
         if (selectedSegment.empty()) {
             // Run the algorithm on all segments until banding error converges
             auto detection = std::make_unique<BandingDetection>(image);
-            std::vector<std::vector<Pixel> > affectedSegments = detection->getUniqueAffectedSegments();
+            std::vector<std::vector<Pixel> > affectedSegments = detection->bandingDetection().second;
 
             while (!affectedSegments.empty()) {
                 // Select the first affected segment
@@ -86,7 +77,7 @@ public:
                     }
 
                     // Horizontal if width > height, else vertical
-                    horizontal = (maxX - minX) >= (maxY - minY);
+                    bool horizontal = (maxX - minX) >= (maxY - minY);
 
                     image.segmentClusters(horizontal);
                     allClusters = image.getClusters();
@@ -113,23 +104,30 @@ public:
 
                     image.setSelectedSegment(selectedSegment);
 
+                    horizontal = isSegmentHorizontal(selectedSegment);
+                    allClusters = image.segmentClusters(horizontal);
+
                     // Extract neighboring segments based on current selection
-                    std::vector<std::vector<Pixel> > neighboringSegments = extractNeighboringSegments(
-                        allClusters, selectedSegment);
+                    std::vector<std::vector<Pixel> > neighboringSegments = extractNeighboringSegments(selectedSegment, horizontal, allClusters);
 
                     // Apply banding correction
                     image.setPixels(getReplacements(selectedSegment, neighboringSegments, image));
                 }
                 detection = std::make_unique<BandingDetection>(image);
-                affectedSegments = detection->getUniqueAffectedSegments();
+                auto [err, aff] = detection->bandingDetection();
+                image.setError(err);
+                affectedSegments = aff;
             }
         } else {
+
             // Extract adjacent segments to the selected segments
             // for horizontal segments, consider only the top and bottom segments
             // for vertical segments, consider only the left and right segments
             // (banding can only happen between the selected segment and these neighboring ones)
-            std::vector<std::vector<Pixel> > neighboringSegments = extractNeighboringSegments(
-                allClusters, selectedSegment);
+            bool horizontal = isSegmentHorizontal(selectedSegment);
+            allClusters = image.segmentClusters(horizontal);
+
+            std::vector<std::vector<Pixel> > neighboringSegments = extractNeighboringSegments(selectedSegment, horizontal, allClusters);
 
             // Banding detection and correction
             if (detectBanding(selectedSegment, neighboringSegments)) {
@@ -138,7 +136,9 @@ public:
         }
 
         // Final cleanup
-        image.segmentClusters(horizontal);
+        auto detection = std::make_unique<BandingDetection>(originalCanvas);
+        image.setAffectedSegments(detection->bandingDetection().second);
+        image.setError(detection->bandingDetection().first);
         image.clearSelectedSegment();
         image.clearHighlightedPixels();
     }
@@ -147,12 +147,10 @@ public:
     void reset() override {
         Algorithm::reset();
         getPixelArtImage().clearDebugLines();
-        getPixelArtImage().segmentClusters(horizontal);
     }
 
 private:
     PixelArtImage originalCanvas = PixelArtImage(0, 0);
-    bool horizontal = true;
     bool alterLeftEdge = true;
     bool alterRightEdge = true;
     bool alterTopEdge = true;
@@ -178,9 +176,10 @@ private:
         return bandingDetected;
     }
 
-    [[nodiscard]] std::vector<std::vector<Pixel> > extractNeighboringSegments(
-        const std::vector<std::vector<std::vector<Pixel> > > &allClusters,
-        const std::vector<Pixel> &selectedSegment) const {
+    [[nodiscard]] static std::vector<std::vector<Pixel> > extractNeighboringSegments(
+        const std::vector<Pixel> &selectedSegment,
+        bool horizontal,
+        const std::vector<std::vector<std::vector<Pixel> > > &allClusters) {
         std::vector<std::vector<Pixel> > neighboringSegments;
 
         // For fast lookup of positions: convert selected segment to a set of positions
@@ -241,19 +240,22 @@ private:
     // Returns optional pair {matchedNeighborIndex, alignment} or std::nullopt if no match
     [[nodiscard]] std::pair<Pos, Pos> getSegmentEndpoints(const std::vector<Pixel> &segment) const {
         auto sortedSegment = segment;
-        std::ranges::sort(sortedSegment, [this](const Pixel &a, const Pixel &b) {
+        bool horizontal = isSegmentHorizontal(sortedSegment);
+        std::ranges::sort(sortedSegment, [this, horizontal](const Pixel &a, const Pixel &b) {
             return !horizontal ? a.pos.y < b.pos.y : a.pos.x < b.pos.x;
         });
         return {sortedSegment.front().pos, sortedSegment.back().pos};
     }
 
     // Check if two segments are adjacent and aligned at endpoints
-    [[nodiscard]] std::optional<std::string> checkEndpointAlignment(const Pos &segStart, const Pos &segEnd,
+    [[nodiscard]] static std::optional<std::string> checkEndpointAlignment(const Pos &segStart, const Pos &segEnd,
                                                                     const Pos &neighborStart,
-                                                                    const Pos &neighborEnd) const {
+                                                                    const Pos &neighborEnd) {
         bool alignStart = false;
         bool alignEnd = false;
         bool sticked = false;
+
+        bool horizontal = segStart.x == neighborStart.x;
 
         if (!horizontal) {
             // Check if vertically adjacent (x differs by 1)
@@ -290,7 +292,9 @@ private:
 
         if (segment.empty()) return replacements;
 
-        std::ranges::sort(segment, [this](const Pixel &a, const Pixel &b) {
+        bool horizontal = isSegmentHorizontal(segment);
+
+        std::ranges::sort(segment, [this, horizontal](const Pixel &a, const Pixel &b) {
             return horizontal ? a.pos.x < b.pos.x : a.pos.y < b.pos.y;
         });
 
@@ -336,7 +340,7 @@ private:
             };
         };
 
-        if (horizontal) {
+        if (isSegmentHorizontal(segment)) {
             edges.push_back(prepareEdge(alterLeftEdge, true, EdgeDirection::Left));
             edges.push_back(prepareEdge(alterRightEdge, false, EdgeDirection::Right));
         } else {
@@ -402,7 +406,7 @@ private:
 
         std::vector<ExpandOp> ops;
 
-        if (horizontal) {
+        if (isSegmentHorizontal(segment)) {
             if (alterLeftEdge) ops.push_back({true, -1, 0, true});
             if (alterRightEdge) ops.push_back({true, 1, 0, false});
         } else {
@@ -505,6 +509,25 @@ private:
 
         return removedColor;
     }
+
+    static bool isSegmentHorizontal(const std::vector<Pixel>& selectedSegment) {
+        int minX = std::numeric_limits<int>::max();
+        int maxX = std::numeric_limits<int>::min();
+        int minY = std::numeric_limits<int>::max();
+        int maxY = std::numeric_limits<int>::min();
+
+        for (const Pixel &px: selectedSegment) {
+            if (px.pos.x < minX) minX = px.pos.x;
+            if (px.pos.x > maxX) maxX = px.pos.x;
+            if (px.pos.y < minY) minY = px.pos.y;
+            if (px.pos.y > maxY) maxY = px.pos.y;
+        }
+
+        // Horizontal if width > height, else vertical
+        return (maxX - minX) >= (maxY - minY);
+    }
+
 };
+
 
 #endif // GENERALBANDINGCORRECTION_H

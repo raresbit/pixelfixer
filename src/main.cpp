@@ -266,8 +266,7 @@ void renderLeftMenu(int &mode, const std::vector<std::string> &imageFiles,
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0, 0));
         ImVec2 buttonSize(40, 20);
         if (ImGui::Button("Run", buttonSize)) {
-            if (algo->name() != "Banding Detection")
-                algo->reset();
+            algo->reset();
             algo->run();
         }
         ImGui::SameLine();
@@ -351,6 +350,12 @@ void renderCanvas(int mode, const std::string &selectedImage, GLuint &canvasText
             for (auto &algo: algorithms) {
                 if (algo) algo->reset();
             }
+
+            auto detection = std::make_unique<BandingDetection>(canvas);
+            auto [err, affected] = detection->bandingDetection();
+            canvas.setAffectedSegments(affected);
+            canvas.setError(err);
+            canvas.clearDebugLines();
         } else {
             std::cerr << "Failed to load image: " << path << std::endl;
         }
@@ -441,27 +446,61 @@ void renderCanvas(int mode, const std::string &selectedImage, GLuint &canvasText
                     (mousePos.y - canvas_pos.y) / zoom
                 );
 
+                // for (auto& cluster : canvas.getClusters()) {
+                //     for (auto& segment : cluster) {
+                //         for (auto& pixel : segment) {
+                //             ImVec2 pixelPos = ImVec2(pixel.pos.x, pixel.pos.y);
+                //             float dist = sqrtf(powf(relativeMousePos.x - pixelPos.x, 2.0f) + powf(relativeMousePos.y - pixelPos.y, 2.0f));
+                //
+                //             if (dist < 0.6f) {
+                //                 // Left-click to select or deselect this cluster
+                //                 if (ImGui::IsMouseClicked(0)) {
+                //                     if (canvas.getSelectedSegment() == segment)
+                //                         canvas.clearSelectedSegment(); // Deselect
+                //                     else {
+                //                         canvas.setSelectedSegment(segment); // Select
+                //                     }
+                //                 }
+                //
+                //                 // Draw hovered cluster
+                //                 canvas.drawRectangle(segment, {0, 255, 0});
+                //                 break;
+                //             }
+                //         }
+                //     }
+                // }
+
+                auto detection = std::make_unique<BandingDetection>(canvas);
+                auto [err, affected] = detection->bandingDetection();
+                canvas.setAffectedSegments(affected);
+                canvas.setError(err);
+
                 for (auto& segment : canvas.getAffectedSegments()) {
-                    for (auto& pixel : segment) {
-                        ImVec2 pixelPos = ImVec2(pixel.pos.x, pixel.pos.y);
-                        float dist = sqrtf(powf(relativeMousePos.x - pixelPos.x, 2.0f) + powf(relativeMousePos.y - pixelPos.y, 2.0f));
+                    bool drawn = false;
+                    if (drawn == false) {
+                        for (auto& pixel : segment) {
+                            ImVec2 pixelPos = ImVec2(pixel.pos.x, pixel.pos.y);
+                            float dist = sqrtf(powf(relativeMousePos.x - pixelPos.x, 2.0f) + powf(relativeMousePos.y - pixelPos.y, 2.0f));
 
-                        if (dist < 0.6f) {
-                            // Left-click to select or deselect this cluster
-                            if (ImGui::IsMouseClicked(0)) {
-                                if (canvas.getSelectedSegment() == segment)
-                                    canvas.clearSelectedSegment(); // Deselect
-                                else {
-                                    canvas.setSelectedSegment(segment); // Select
+                            if (dist < 0.7f) {
+                                // Left-click to select or deselect this cluster
+                                if (ImGui::IsMouseClicked(0)) {
+                                    if (canvas.getSelectedSegment() == segment)
+                                        canvas.clearSelectedSegment(); // Deselect
+                                    else {
+                                        canvas.setSelectedSegment(segment); // Select
+                                    }
                                 }
-                            }
 
-                            // Draw hovered cluster
-                            canvas.drawRectangle(segment, {0, 255, 0});
-                            break;
+                                // Draw hovered cluster
+                                canvas.drawRectangle(segment, {0, 255, 0});
+                                drawn = true;
+                            }
                         }
                     }
                 }
+
+
                 if (canvas.getSelectedSegment().size() > 0) {
                     canvas.drawRectangle(canvas.getSelectedSegment(), {0, 255, 0});
 
@@ -504,7 +543,6 @@ std::vector<std::unique_ptr<Algorithm> > loadAlgorithms(PixelArtImage &canvas) {
     std::vector<std::unique_ptr<Algorithm> > algos;
     algos.emplace_back(std::make_unique<PillowShadingCorrection>(canvas));
     algos.emplace_back(std::make_unique<GeneralBandingCorrection>(canvas));
-    algos.emplace_back(std::make_unique<BandingDetection>(canvas));
     return algos;
 }
 

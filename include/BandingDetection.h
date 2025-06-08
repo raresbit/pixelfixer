@@ -25,85 +25,70 @@ public:
         return "Banding Detection";
     }
 
-    int bandingDetection() {
-        error = 0;
-        debugPixels.clear();
-        getPixelArtImage().clearDebugLines();
-
-        bool origHorizontal = horizontal;
-        getPixelArtImage().segmentClusters(horizontal);
-
-        if (currentSelection == 2) {
-            // Both
-            horizontal = true;
-            getPixelArtImage().segmentClusters(true);
-            runDetection();
-
-            horizontal = false;
-            getPixelArtImage().segmentClusters(false);
-            runDetection();
-        } else {
-            runDetection();
-        }
-
-        horizontal = origHorizontal;
-
-        return error;
-    }
-
-
-    [[nodiscard]] std::vector<std::vector<Pixel>> getUniqueAffectedSegments() {
-        // Run detection both horizontally and vertically
-        debugPixels.clear();
-        affectedSegmentPairs.clear();  // Clear previous results
-        getPixelArtImage().clearDebugLines();
-
-        bool origHorizontal = horizontal;
-
-        horizontal = true;
-        getPixelArtImage().segmentClusters(true);
-        runDetection();
-
-        horizontal = false;
-        getPixelArtImage().segmentClusters(false);
-        runDetection();
-
-        horizontal = origHorizontal;
-
-        getPixelArtImage().clearDebugLines();
-
-
-        // Save unique segments
-        std::vector<std::vector<Pixel>> flattened;
-        std::unordered_set<const std::vector<Pixel>*> seen;
-
-        for (const auto& pair : affectedSegmentPairs) {
-            const auto* segA = &pair.first;
-            const auto* segB = &pair.second;
-
-            if (!seen.contains(segA)) {
-                flattened.push_back(*segA);
-                seen.insert(segA);
-            }
-
-            if (!seen.contains(segB)) {
-                flattened.push_back(*segB);
-                seen.insert(segB);
-            }
-        }
-
-        affectedSegmentPairs.clear();  // Clear previous results
-
-        return flattened;
-    }
-
-
-    void run() override {
+    std::pair<int, std::vector<std::vector<Pixel>>> bandingDetection() {
         for (int i = 0; i < getPixelArtImage().getWidth(); i++) {
             for (int j = 0; j < getPixelArtImage().getHeight(); j++) {
                 getPixelArtImage().setPixel({i, j}, getPixelArtImage().getPixel({i, j}).color);
             }
         }
+
+        error = 0;
+        debugPixels.clear();
+        getPixelArtImage().clearDebugLines();
+
+        // Both
+        std::vector<std::pair<std::vector<Pixel>, std::vector<Pixel>>> affectedSegmentPairs;
+        getPixelArtImage().segmentClusters(true);
+        auto newPairs = runDetection(true);
+        affectedSegmentPairs.insert(affectedSegmentPairs.end(), newPairs.begin(), newPairs.end());
+
+        getPixelArtImage().segmentClusters(false);
+        newPairs = runDetection(false);
+        affectedSegmentPairs.insert(affectedSegmentPairs.end(), newPairs.begin(), newPairs.end());
+
+        // Save unique segments
+        struct SegmentHash {
+            std::size_t operator()(const std::vector<Pixel>& segment) const {
+                std::size_t h = 0;
+                for (const auto& p : segment) {
+                    h ^= std::hash<int>()(p.pos.x) ^ (std::hash<int>()(p.pos.y) << 1);
+                }
+                return h;
+            }
+        };
+
+        struct SegmentEqual {
+            bool operator()(const std::vector<Pixel>& a, const std::vector<Pixel>& b) const {
+                if (a.size() != b.size()) return false;
+                for (size_t i = 0; i < a.size(); ++i) {
+                    if (a[i].pos != b[i].pos) return false;
+                }
+                return true;
+            }
+        };
+
+        std::unordered_set<std::vector<Pixel>, SegmentHash, SegmentEqual> seen;
+        std::vector<std::vector<Pixel>> flattened;
+
+        for (const auto& pair : affectedSegmentPairs) {
+            const auto& segA = pair.first;
+            const auto& segB = pair.second;
+
+            if (seen.insert(segA).second) {
+                flattened.push_back(segA);
+            }
+            if (seen.insert(segB).second) {
+                flattened.push_back(segB);
+            }
+        }
+
+        affectedSegmentPairs.clear();  // Clear previous results
+
+        return std::pair{error, flattened};
+    }
+
+
+    void run() override {
         bandingDetection();
     }
 
@@ -111,59 +96,25 @@ public:
     void reset() override {
         Algorithm::reset();
         debugPixels.clear();
-        showDebug = false;
         getPixelArtImage().clearDebugLines();
         getPixelArtImage().clearHighlightedPixels();
         error = 0;
-        getPixelArtImage().segmentClusters(horizontal);
     }
 
     void renderUI() override {
-        // Dropdown options
-        const char *options[] = {"Horizontal", "Vertical", "Both"};
-
-        ImGui::Text("Segment Orientation");
-        ImGui::SetNextItemWidth(-FLT_MIN);
-        if (ImGui::BeginCombo("##Segment Orientation", options[currentSelection])) {
-            for (int n = 0; n < IM_ARRAYSIZE(options); n++) {
-                bool is_selected = (currentSelection == n);
-                if (ImGui::Selectable(options[n], is_selected)) {
-                    currentSelection = n;
-
-                    // Clear and detect clusters accordingly
-                    getPixelArtImage().clearHighlightedPixels();
-                    if (currentSelection == 0) {
-                        horizontal = true;
-                        getPixelArtImage().segmentClusters(true);
-                    } else if (currentSelection == 1) {
-                        horizontal = false;
-                        getPixelArtImage().segmentClusters(false);
-                    } else {
-                        // Both: We'll handle this in run()
-                    }
-                }
-                if (is_selected)
-                    ImGui::SetItemDefaultFocus();
-            }
-            ImGui::EndCombo();
-        }
-
         ImGui::Text("Banding pair count: %d", error);
-        ImGui::Checkbox("Debug View", &showDebug);
     }
 
 private:
-    bool showDebug = false;
-    bool horizontal = true;
     std::vector<Pixel> debugPixels;
     int error = 0;
-    std::vector<std::pair<std::vector<Pixel>, std::vector<Pixel>>> affectedSegmentPairs;
-    int currentSelection = 2;
 
 
-    void runDetection() {
+    std::vector<std::pair<std::vector<Pixel>, std::vector<Pixel>>> runDetection(bool horizontalOrientation) {
         PixelArtImage &canvas = getPixelArtImage();
         const auto allClusters = canvas.getClusters();
+
+        std::vector<std::pair<std::vector<Pixel>, std::vector<Pixel>>> affectedSegmentPairs;
 
         std::unordered_set<const std::vector<Pixel> *> alreadyChecked;
         std::set<std::pair<const void *, const void *> > countedPairs;
@@ -176,7 +127,7 @@ private:
                 std::unordered_set<Pos> segmentAPosSet;
                 for (const auto &p: segmentA) segmentAPosSet.insert(p.pos);
 
-                auto [startA, endA] = getSegmentEndpoints(segmentA, !horizontal);
+                auto [startA, endA] = getSegmentEndpoints(segmentA, !horizontalOrientation);
 
                 bool foundMatchForSegmentA = false;
 
@@ -200,8 +151,8 @@ private:
                                      Pos{p.pos.x, p.pos.y - 1}
                                  }) {
                                 if (segmentAPosSet.contains(n)) {
-                                    auto [startB, endB] = getSegmentEndpoints(segmentB, !horizontal);
-                                    auto alignmentOpt = checkEndpointAlignment(startA, endA, startB, endB, !horizontal);
+                                    auto [startB, endB] = getSegmentEndpoints(segmentB, !horizontalOrientation);
+                                    auto alignmentOpt = checkEndpointAlignment(startA, endA, startB, endB, !horizontalOrientation);
 
                                     if (alignmentOpt.has_value()) {
                                         error++;
@@ -211,12 +162,10 @@ private:
                                         for (const auto &px: segmentA) {
                                             Pixel redPixel = px;
                                             redPixel.color = red;
-                                            debugPixels.push_back(redPixel);
                                         }
                                         for (const auto &px: segmentB) {
                                             Pixel redPixel = px;
                                             redPixel.color = red;
-                                            debugPixels.push_back(redPixel);
                                         }
 
                                         std::vector<Pixel> combined = segmentA;
@@ -240,6 +189,7 @@ private:
                 alreadyChecked.insert(&segmentA);
             }
         }
+        return affectedSegmentPairs;
     }
 
 

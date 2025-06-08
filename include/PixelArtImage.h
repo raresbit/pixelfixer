@@ -259,6 +259,19 @@ public:
     void setSelectedSegment(const std::vector<Pixel> &segment);
 
     /**
+     * Sets the banding error to a precomputed value.
+     * @param err the banding error
+     */
+    void setError(int err);
+
+    /**
+     * @brief Retrieves the banding error of the canvas.
+     *
+     * @return The banding error of the canvas.
+     */
+    [[nodiscard]] int getError() const;
+
+    /**
      * Extracts the subject from a given canvas by creating a mask that highlights non-white areas.
      *
      * @param canvas The input Canvas object from which the subject will be extracted.
@@ -313,6 +326,8 @@ public:
 
     [[nodiscard]] std::vector<std::vector<Pixel>> getAffectedSegments() const;
 
+    void setAffectedSegments(std::vector<std::vector<Pixel>> affectedSegs) ;
+
 
     /**
      * @brief Draws a rectangle around the bounding box of a set of pixels on the canvas.
@@ -340,6 +355,7 @@ private:
     std::optional<Pixel> generator;
     std::vector<Pixel> drawnPath;
     std::vector<std::vector<Pixel> > affectedSegments;
+    int error;
 };
 
 #endif // CANVAS_H
