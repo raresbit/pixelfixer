@@ -9,10 +9,11 @@
 #include "Algorithm.h"
 #include <vector>
 #include <iostream>
-#include <opencv2/opencv.hpp>
 #include "../include/PixelArtImage.h"
 #include "imgui.h"
 #include <glm/glm.hpp>
+#include <unordered_set>
+#include <set>
 
 
 class BandingDetection final : public Algorithm {

@@ -7,6 +7,7 @@
 
 #pragma once
 #include "PixelArtImage.h"
+#include "imgui.h"
 #include <string>
 
 class Algorithm {

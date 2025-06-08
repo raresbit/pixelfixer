@@ -3,6 +3,7 @@
 //
 
 #include "../include/PixelArtImage.h"
+#include "../include/BandingDetection.h"
 #include <iostream>
 #include <ranges>
 #include <opencv2/core/mat.hpp>
@@ -50,7 +51,9 @@ bool PixelArtImage::loadFromFile(const std::string &filepath) {
     debugPixels.resize(width * height);
     clearHighlightedPixels();
     highlightedPixels.resize(width * height);
+    auto detection = std::make_unique<BandingDetection>(*this);
     clusters = segmentClusters();
+    affectedSegments = detection->getUniqueAffectedSegments();
     selectedSegment.clear();
     clearDrawnPath();
 
@@ -172,6 +175,21 @@ void PixelArtImage::setDebugLines(const std::vector<std::tuple<glm::vec2, glm::v
 void PixelArtImage::clearDebugLines() {
     debugLines.clear();
 }
+
+void PixelArtImage::clearDebugLinesWithColor(const Color &color) {
+    debugLines.erase(
+        std::remove_if(
+            debugLines.begin(),
+            debugLines.end(),
+            [&](const auto &line) {
+                const Color &lineColor = std::get<2>(line);
+                return lineColor == color;
+            }
+        ),
+        debugLines.end()
+    );
+}
+
 
 
 bool PixelArtImage::saveToFile(const std::string &filepath) const {
@@ -300,6 +318,10 @@ void PixelArtImage::clearClusters() {
 
 void PixelArtImage::clearSelectedSegment() {
     selectedSegment.clear();
+}
+
+std::vector<std::vector<Pixel>> PixelArtImage::getAffectedSegments() const {
+    return affectedSegments;
 }
 
 void PixelArtImage::setSelectedSegment(const std::vector<Pixel> &segment) {

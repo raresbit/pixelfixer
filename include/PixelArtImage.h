@@ -311,6 +311,8 @@ public:
      */
     [[nodiscard]] const std::vector<Pixel> &getDrawnPath() const;
 
+    [[nodiscard]] std::vector<std::vector<Pixel>> getAffectedSegments() const;
+
 
     /**
      * @brief Draws a rectangle around the bounding box of a set of pixels on the canvas.
@@ -324,6 +326,8 @@ public:
      */
     void drawRectangle(const std::vector<Pixel> &pixels, const Color &color);
 
+    void clearDebugLinesWithColor(const Color &color);
+
 private:
     int width, height;
     std::vector<Pixel> pixels;
@@ -335,6 +339,7 @@ private:
     std::vector<Pixel> selectedSegment;
     std::optional<Pixel> generator;
     std::vector<Pixel> drawnPath;
+    std::vector<std::vector<Pixel> > affectedSegments;
 };
 
 #endif // CANVAS_H

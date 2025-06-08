@@ -431,7 +431,7 @@ void renderCanvas(int mode, const std::string &selectedImage, GLuint &canvasText
 
                 // Highlight clusters on hover (in red color)
                 ImDrawList* draw_list = ImGui::GetWindowDrawList();
-                canvas.clearDebugLines();
+                canvas.clearDebugLinesWithColor({0, 255, 0});
                 const float lineOffset = 0.5f * zoom;  // Adjust this offset as needed for line rendering
 
                 // Hover effect - Check if the mouse is over a cluster
@@ -441,26 +441,24 @@ void renderCanvas(int mode, const std::string &selectedImage, GLuint &canvasText
                     (mousePos.y - canvas_pos.y) / zoom
                 );
 
-                for (auto& cluster : canvas.getClusters()) {
-                    for (auto& segment : cluster) {
-                        for (auto& pixel : segment) {
-                            ImVec2 pixelPos = ImVec2(pixel.pos.x, pixel.pos.y);
-                            float dist = sqrtf(powf(relativeMousePos.x - pixelPos.x, 2.0f) + powf(relativeMousePos.y - pixelPos.y, 2.0f));
+                for (auto& segment : canvas.getAffectedSegments()) {
+                    for (auto& pixel : segment) {
+                        ImVec2 pixelPos = ImVec2(pixel.pos.x, pixel.pos.y);
+                        float dist = sqrtf(powf(relativeMousePos.x - pixelPos.x, 2.0f) + powf(relativeMousePos.y - pixelPos.y, 2.0f));
 
-                            if (dist < 0.6f) {
-                                // Left-click to select or deselect this cluster
-                                if (ImGui::IsMouseClicked(0)) {
-                                    if (canvas.getSelectedSegment() == segment)
-                                        canvas.clearSelectedSegment(); // Deselect
-                                    else {
-                                        canvas.setSelectedSegment(segment); // Select
-                                    }
+                        if (dist < 0.6f) {
+                            // Left-click to select or deselect this cluster
+                            if (ImGui::IsMouseClicked(0)) {
+                                if (canvas.getSelectedSegment() == segment)
+                                    canvas.clearSelectedSegment(); // Deselect
+                                else {
+                                    canvas.setSelectedSegment(segment); // Select
                                 }
-
-                                // Draw hovered cluster
-                                canvas.drawRectangle(segment, {0, 255, 0});
-                                break;
                             }
+
+                            // Draw hovered cluster
+                            canvas.drawRectangle(segment, {0, 255, 0});
+                            break;
                         }
                     }
                 }

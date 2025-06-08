@@ -42,12 +42,14 @@ public:
         int width = canvas.getWidth();
         int height = canvas.getHeight();
 
-        std::vector<std::pair<Color, cv::Mat> > layers = extract_layers(canvas);
+        std::vector<std::pair<Color, cv::Mat> > layers = extractLayers(canvas);
 
         if (layers.size() < 2) return; // safety
 
         // Clear debug layers
         debugLayers.clear();
+        debugNeighborCandidates.clear();
+        showNeighborCandidates = false;
 
         // Create a blank PixelArtImage for the processed (resulting) picture
         auto error = 9999999;
@@ -100,12 +102,6 @@ public:
         ImGui::SetNextItemWidth(-FLT_MIN);
         ImGui::Combo("##Erosion Mode", &erosionMode, erosionModes, IM_ARRAYSIZE(erosionModes));
 
-        if (!getPixelArtImage().getDrawnPath().empty() || getPixelArtImage().getGenerator().has_value()) {
-            ImGui::Text("Translation Factor");
-            ImGui::SetNextItemWidth(-FLT_MIN);
-            ImGui::SliderFloat("##TranslationFactor", &TRANSLATION_FACTOR, 0.0f, 2.0f, "%.3f");
-        }
-
         // Show slider for linear erosion factor only if linear erosion is selected
         if (erosionMode == 1) {
             ImGui::Text("Linear Erosion Factor");
@@ -156,14 +152,14 @@ public:
         const cv::Mat &layer = debugLayers[selectedLayer];
         int width = getPixelArtImage().getWidth();
         int height = getPixelArtImage().getHeight();
-
-        for (int y = 0; y < height; ++y) {
-            for (int x = 0; x < width; ++x) {
-                if (layer.at<uchar>(y, x) > 0) {
-                    getPixelArtImage().setDebugPixel({x, y}, Color(255, 0, 0)); // Red color for debug
-                }
-            }
-        }
+        //
+        // for (int y = 0; y < height; ++y) {
+        //     for (int x = 0; x < width; ++x) {
+        //         if (layer.at<uchar>(y, x) > 0) {
+        //             getPixelArtImage().setDebugPixel({x, y}, Color(255, 0, 0)); // Red color for debug
+        //         }
+        //     }
+        // }
 
         if (showNeighborCandidates && selectedLayer < debugNeighborCandidates.size()) {
             for (const auto &[x, y]: debugNeighborCandidates[selectedLayer]) {
@@ -187,7 +183,6 @@ private:
     int errorImprovement = 0;
 
     float LINEAR_EROSION_FACTOR = 1.0f; // Default factor
-    float TRANSLATION_FACTOR = 1.0f; // Default factor
     int EXPANSION_ITERATIONS = 1;
     float PROB_ADD_CANDIDATE_PIXEL = 0.3f;
     int PIPELINE_ITERATIONS = 10;
@@ -265,7 +260,7 @@ private:
                 for (int y = 0; y < height; ++y)
                     for (int x = 0; x < width; ++x)
                         if (currentMask.at<uchar>(y, x)) {
-                            float attenuation = TRANSLATION_FACTOR * 1.0f / (static_cast<float>(layers.size()) - i);
+                            float attenuation = 1.0f / (static_cast<float>(layers.size()) - i);
                             int newX = x + dx * attenuation;
                             int newY = y + dy * attenuation;
                             if (newX >= 0 && newX < width && newY >= 0 && newY < height)
@@ -307,7 +302,7 @@ private:
     }
 
 
-    static std::vector<std::pair<Color, cv::Mat> > extract_layers(const PixelArtImage &canvas) {
+    static std::vector<std::pair<Color, cv::Mat> > extractLayers(const PixelArtImage &canvas) {
         int width = canvas.getWidth();
         int height = canvas.getHeight();
 
@@ -322,23 +317,52 @@ private:
             }
 
         std::vector<std::pair<Color, cv::Mat> > layers;
+        std::vector<std::pair<Color, cv::Mat> > unchangedLayers;
+
         for (auto &[color, points]: colorPixels) {
             cv::Mat mask = cv::Mat::zeros(height, width, CV_8UC1);
             for (const auto &pt: points)
                 mask.at<uchar>(pt.y, pt.x) = 255;
 
-            std::vector<std::vector<cv::Point> > contours;
-            cv::findContours(mask.clone(), contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
-            mask = cv::Mat::zeros(height, width, CV_8UC1);
-            cv::drawContours(mask, contours, -1, 255, cv::FILLED);
+            int originalCount = static_cast<int>(points.size());
 
-            layers.emplace_back(color, mask);
+            // Check number of connected components
+            cv::Mat labels;
+            int numComponents = cv::connectedComponents(mask, labels, 8);
+
+            std::vector<std::vector<cv::Point> > contours;
+            if (numComponents <= 2) {
+                cv::findContours(mask.clone(), contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+            } else {
+                std::vector<cv::Point> rawContour;
+                for (const auto &pt: points)
+                    rawContour.emplace_back(pt.x, pt.y);
+
+                std::vector<cv::Point> hull;
+                cv::convexHull(rawContour, hull);
+                contours = {hull};
+            }
+
+            cv::Mat filledMask = cv::Mat::zeros(height, width, CV_8UC1);
+            cv::drawContours(filledMask, contours, -1, 255, cv::FILLED);
+
+            // If the filled mask is identical to the original, mark it as unchanged
+            if (cv::countNonZero(mask != filledMask) == 0) {
+                unchangedLayers.emplace_back(color, filledMask);
+            } else {
+                layers.emplace_back(color, filledMask);
+            }
         }
 
-        // Sort by descending pixel count (surface area)
-        std::ranges::sort(layers, [](const auto &a, const auto &b) {
-            return cv::countNonZero(a.second) > cv::countNonZero(b.second);
+        // Sort remaining layers in *reverse* order of original pixel count
+        std::ranges::sort(layers, [&](const auto &a, const auto &b) {
+            int countA = cv::countNonZero(a.second);
+            int countB = cv::countNonZero(b.second);
+            return countA > countB; // reverse: biggr ones first
         });
+
+        // Append unchanged layers at the end
+        layers.insert(layers.end(), unchangedLayers.begin(), unchangedLayers.end());
 
         return layers;
     }
@@ -347,7 +371,7 @@ private:
                      int iterations = 1) {
         if (iterations == 0) return;
 
-        std::vector<std::pair<int, int> > neighbors = {
+        std::vector<std::pair<int, int> > neighbors_8 = {
             {-1, -1}, {-1, 0}, {-1, 1},
             {0, -1}, {0, 1},
             {1, -1}, {1, 0}, {1, 1}
@@ -363,19 +387,12 @@ private:
         std::unordered_map<std::pair<int, int>, int> candidate_counts;
 
         for (const auto &pt: shape) {
-            for (const auto &[dx, dy]: neighbors) {
+            for (const auto &[dx, dy]: neighbors_8) {
                 auto neighbor = std::make_pair(pt.first + dx, pt.second + dy);
                 if (!shape.contains(neighbor))
                     candidate_counts[neighbor]++;
             }
         }
-
-        // Set neighbours for debug purposes
-        for (const auto &[pt, count]: candidate_counts) {
-            out_candidate_neighbors->insert(pt);
-        }
-
-        std::uniform_real_distribution<double> dist(0.0, 1.0);
 
 
         cv::Mat dilated;
@@ -383,15 +400,21 @@ private:
             // Recompute candidate pixels
             candidate_counts.clear();
             for (const auto &pt: shape) {
-                for (const auto &[dx, dy]: neighbors) {
+                for (const auto &[dx, dy]: neighbors_8) {
                     auto neighbor = std::make_pair(pt.first + dx, pt.second + dy);
                     if (!shape.contains(neighbor))
                         candidate_counts[neighbor]++;
                 }
             }
+
             // First pass: probabilistic addition
+            std::unordered_set<std::pair<int, int>> addedPixels;
+            std::uniform_real_distribution dist(0.0, 1.0);
+
             for (const auto &[pt, count]: candidate_counts) {
                 if (count == 3 && dist(generator) < PROB_ADD_CANDIDATE_PIXEL) {
+                    // Add the pixel
+                    addedPixels.insert(pt);
                     shape.insert(pt);
                 }
             }
@@ -403,9 +426,94 @@ private:
                     temp.at<uchar>(y, x) = 255;
             }
 
-            // Second pass: apply a dilation to smooth out the result
+            // Second pass: apply a dilation to get back to the original size
             cv::Mat kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3));
             cv::dilate(temp, dilated, kernel, cv::Point(-1, -1), 1);
+
+
+            // Third pass: fill in gaps in the contour, to remove lone pixels
+
+            // Extract contour and neighbors of "dilated"
+            std::vector<std::pair<int, int> > neighbors_4 = {
+                        {-1, 0},
+                {0, -1},    {0, 1},
+                        {1, 0},
+            };
+
+            std::set<std::pair<int, int>> contour;
+            std::set<std::pair<int, int>> neighbors;
+
+            for (int y = 1; y < dilated.rows - 1; ++y) {
+                for (int x = 1; x < dilated.cols - 1; ++x) {
+                    if (dilated.at<uchar>(y, x) > 0) {
+                        for (const auto &[dx, dy]: neighbors_4) {
+                            if (dilated.at<uchar>(y+dy, x+dx) == 0) {
+                                contour.insert(std::pair(x, y));
+                                neighbors.insert(std::pair(x+dx, y+dy));
+                            }
+                        }
+                    }
+                }
+            }
+
+
+            // Iterate through the contour
+            // For every pixel on the contour, check which directions are free: in other words
+            // check which of the neighbors_4 are not part of the contour as well
+            // If such pixels are found (say we found one above), iterate through each, doing the following:
+            // Try to add as many pixels in that direction as possible (so add as many pixels directly above)
+            // Until we "meet" another pixel from the contour
+            // And also while ensuring those added pixels are part of the neighbors set; once we find one not part
+            // of the neighbor set, you can directly "continue" the loop, not adding any of those pixels at all
+            // The point is that this technique would close "vertical/horizontal" gaps in contours
+            for (const auto &[x, y] : contour) {
+                for (const auto &[dx, dy] : neighbors_4) {
+                    int nx = x + dx;
+                    int ny = y + dy;
+
+                    // If neighbor is not part of contour, consider it a direction to try
+                    if (!contour.contains({nx, ny})) {
+                        std::vector<std::pair<int, int>> to_add;
+                        int cx = nx;
+                        int cy = ny;
+
+                        while (true) {
+                            // If out of bounds, break
+                            if (cx < 0 || cx >= dilated.cols || cy < 0 || cy >= dilated.rows)
+                                break;
+
+                            std::pair<int, int> current = {cx, cy};
+
+                            // Stop if this is not a neighbor
+                            if (!neighbors.contains(current))
+                                break;
+
+                            // Stop if we encounter another contour pixel
+                            if (contour.contains(current))
+                                break;
+
+                            // Otherwise, queue this pixel for addition
+                            to_add.push_back(current);
+
+                            cx += dx;
+                            cy += dy;
+                        }
+
+                        // If we ended because of a contour pixel, it's a valid bridge
+                        if (contour.contains({cx, cy})) {
+                            for (const auto &[px, py] : to_add) {
+                                dilated.at<uchar>(py, px) = 255;
+                                out_candidate_neighbors->insert({px, py});
+                            }
+                        }
+                    }
+                }
+            }
+
+            for (const auto &pt: contour) {
+                out_candidate_neighbors->insert(pt);
+            }
+
         }
 
         // Final result: union of original shape and dilated result
