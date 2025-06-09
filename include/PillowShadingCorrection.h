@@ -96,6 +96,12 @@ public:
         ImGui::SetNextItemWidth(-FLT_MIN);
         ImGui::SliderInt("##Pipeline Iterations", &PIPELINE_ITERATIONS, 1, 10);
 
+        ImGui::Spacing();
+
+        ImGui::Text("Preserve Shape Outline");
+        ImGui::SameLine();
+        ImGui::Checkbox("##Preserve Outline", &PRESERVE_OUTLINE);
+
         // Combo to select erosion mode
         ImGui::Text("Erosion Mode");
         const char *erosionModes[] = {"Constant Erosion Iterations", "Linear Erosion Iterations (On Layer #)"};
@@ -109,9 +115,9 @@ public:
             ImGui::SliderFloat("##LinearErosionFactor", &LINEAR_EROSION_FACTOR, 0.0f, 2.0f, "%.3f");
         }
 
-        ImGui::Text("Expansion Iterations");
-        ImGui::SetNextItemWidth(-FLT_MIN);
-        ImGui::SliderInt("##ExpansionIterations", &EXPANSION_ITERATIONS, 0, 5);
+        // ImGui::Text("Expansion Iterations");
+        // ImGui::SetNextItemWidth(-FLT_MIN);
+        // ImGui::SliderInt("##ExpansionIterations", &EXPANSION_ITERATIONS, 0, 5);
 
 
         ImGui::Text("Probability to Add Candidate Pixel");
@@ -174,16 +180,24 @@ private:
     int errorImprovement = 0;
 
     float LINEAR_EROSION_FACTOR = 1.0f; // Default factor
-    int EXPANSION_ITERATIONS = 1;
+    // int EXPANSION_ITERATIONS = 1;
     float PROB_ADD_CANDIDATE_PIXEL = 0.3f;
     int PIPELINE_ITERATIONS = 10;
+    bool PRESERVE_OUTLINE = true;
 
     void constructCorrectedCanvas(int width, int height, std::vector<std::pair<Color, cv::Mat> > layers,
                                   PixelArtImage &correctedCanvas) {
         correctedCanvas.fill({255, 255, 255});
 
+        int startingLayer = 1;
+        if (PRESERVE_OUTLINE) {
+            startingLayer = 2;
+        } else {
+            startingLayer = 1;
+        }
+
         // Fill subject outline and first layer
-        for (size_t i = 0; i < 2; ++i) {
+        for (size_t i = 0; i < startingLayer; ++i) {
             auto &[color, currentMask] = layers[i];
             for (int y = 0; y < height; ++y)
                 for (int x = 0; x < width; ++x)
@@ -220,14 +234,14 @@ private:
             }
         }
 
-        int iterations = 0;
+        int finalLayer = 0;
         if (drawnPathMask.has_value()) {
-            iterations = layers.size() - 2;
+            finalLayer = layers.size() - 2;
         } else {
-            iterations = layers.size() - 1;
+            finalLayer = layers.size() - 1;
         }
 
-        for (size_t i = 2; i <= iterations; ++i) {
+        for (size_t i = startingLayer; i <= finalLayer; ++i) {
             auto &[color, currentMask] = layers[i];
             cv::Mat translatedMask = cv::Mat::zeros(height, width, CV_8UC1);
 
@@ -272,12 +286,12 @@ private:
 
             debugLayers.push_back(translatedMask);
             std::unordered_set<std::pair<int, int> > neighbors;
-            expandShape(modified, &neighbors, EXPANSION_ITERATIONS);
+            expandShape(modified, &neighbors, 1);
             debugNeighborCandidates.push_back(std::move(neighbors));
 
             for (int y = 0; y < height; ++y)
                 for (int x = 0; x < width; ++x)
-                    if (modified.at<uchar>(y, x) && layers[1].second.at<uchar>(y, x))
+                    if (modified.at<uchar>(y, x) && layers[startingLayer - 1].second.at<uchar>(y, x))
                         correctedCanvas.setPixel({x, y}, color);
         }
 

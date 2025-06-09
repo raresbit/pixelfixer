@@ -1,7 +1,7 @@
-# CSE3000 Research Project: Improving Pixel Art through Semi-Automated Correction of Spatial Faults
+# CSE3000 Research Project: Pixel Art 2.0 (Pixel Fixer)
 
 ## Project Info
-This project represents the codebase of Rares Bites' bachelor-end project (CSE3000). The main goal of the project was to correct common spatial faults in Pixel Art (i.e., mistakes relating to the pixel placement rather than the used color palettes), such as banding or pillow-shading.
+This repository represents the codebase of Rares Bites' bachelor-end project (CSE3000). It accompanies the bachelor thesis, aimed at creating techniques for correcting banding and pillow-shading in Pixel Art.
 
 ### Libraries Used
 - [Dear ImGui](https://github.com/ocornut/imgui) – GUI
@@ -37,8 +37,6 @@ This project represents the codebase of Rares Bites' bachelor-end project (CSE30
 4. Run the application.
 
 ## Usage
-Once the application is open, there are two modes possible: either draw your own Pixel Art, or display an existing image from `assets/images` (where you can also manually add your own images). You can choose which algorithm you wish to run on the displayed Pixel Art, and observe the corrections made.
-
-Testing can be done in the form of visual debugging, in-app.
+Once the application is open, you can display an existing image from `assets/images` (where you can also manually add your own images). You can choose which algorithm you wish to run on the displayed Pixel Art, and observe the corrections made.
 
 ![demo.png](demo.png)

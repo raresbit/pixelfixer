@@ -288,11 +288,11 @@ void renderLeftMenu(int &mode, const std::vector<std::string> &imageFiles,
             ImGui::TreePop();
         }
 
-        if (ImGui::TreeNode("Visual Debug"))
-        {
-            algo->renderDebugUI();
-            ImGui::TreePop();
-        }
+        // if (ImGui::TreeNode("Visual Debug"))
+        // {
+        //     algo->renderDebugUI();
+        //     ImGui::TreePop();
+        // }
 
 
         // Refresh texture after debug drawing, if needed
