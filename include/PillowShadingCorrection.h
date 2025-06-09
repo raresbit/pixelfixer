@@ -308,7 +308,6 @@ private:
             }
 
         std::vector<std::pair<Color, cv::Mat> > layers;
-        std::vector<std::pair<Color, cv::Mat> > unchangedLayers;
 
         for (auto &[color, points]: colorPixels) {
             cv::Mat mask = cv::Mat::zeros(height, width, CV_8UC1);
@@ -335,23 +334,17 @@ private:
             cv::Mat filledMask = cv::Mat::zeros(height, width, CV_8UC1);
             cv::drawContours(filledMask, contours, -1, 255, cv::FILLED);
 
-            // If the filled mask is identical to the original, mark it as unchanged (it is the top-most layer; the highlight)
-            if (cv::countNonZero(mask != filledMask) == 0) {
-                unchangedLayers.emplace_back(color, filledMask);
-            } else {
-                layers.emplace_back(color, filledMask);
-            }
+
+            layers.emplace_back(color, filledMask);
         }
 
-        // Sort remaining layers in *reverse* order of original pixel count
+        // Sort layers in increasing order of brightness
         std::ranges::sort(layers, [&](const auto &a, const auto &b) {
-            int countA = cv::countNonZero(a.second);
-            int countB = cv::countNonZero(b.second);
-            return countA > countB; // reverse: biggr ones first
+            auto brightnessA = 0.2126f * a.first.r + 0.7152f * a.first.g + 0.0722f * a.first.b;
+            auto brightnessB = 0.2126f * b.first.r + 0.7152f * b.first.g + 0.0722f * b.first.b;
+            return brightnessA < brightnessB;
         });
 
-        // Append unchanged layers at the end
-        layers.insert(layers.end(), unchangedLayers.begin(), unchangedLayers.end());
 
         return layers;
     }
