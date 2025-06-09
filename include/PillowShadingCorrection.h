@@ -149,17 +149,8 @@ public:
         ImGui::Combo("##Select Layer", &selectedLayer, labelPointers.data(), static_cast<int>(labelPointers.size()));
 
         getPixelArtImage().clearDebugPixels();
-        const cv::Mat &layer = debugLayers[selectedLayer];
         int width = getPixelArtImage().getWidth();
         int height = getPixelArtImage().getHeight();
-        //
-        // for (int y = 0; y < height; ++y) {
-        //     for (int x = 0; x < width; ++x) {
-        //         if (layer.at<uchar>(y, x) > 0) {
-        //             getPixelArtImage().setDebugPixel({x, y}, Color(255, 0, 0)); // Red color for debug
-        //         }
-        //     }
-        // }
 
         if (showNeighborCandidates && selectedLayer < debugNeighborCandidates.size()) {
             for (const auto &[x, y]: debugNeighborCandidates[selectedLayer]) {
@@ -324,8 +315,6 @@ private:
             for (const auto &pt: points)
                 mask.at<uchar>(pt.y, pt.x) = 255;
 
-            int originalCount = static_cast<int>(points.size());
-
             // Check number of connected components
             cv::Mat labels;
             int numComponents = cv::connectedComponents(mask, labels, 8);
@@ -346,7 +335,7 @@ private:
             cv::Mat filledMask = cv::Mat::zeros(height, width, CV_8UC1);
             cv::drawContours(filledMask, contours, -1, 255, cv::FILLED);
 
-            // If the filled mask is identical to the original, mark it as unchanged
+            // If the filled mask is identical to the original, mark it as unchanged (it is the top-most layer; the highlight)
             if (cv::countNonZero(mask != filledMask) == 0) {
                 unchangedLayers.emplace_back(color, filledMask);
             } else {

@@ -25,9 +25,6 @@ public:
     }
 
     void renderUI() override {
-        // Vertical space
-        ImGui::Dummy(ImVec2(0.0f, 10.0f));
-
         // Operation dropdown
         const char *operations[] = {"Shrink (Copy Neigh. Color)", "Shrink (Average With Neigh. Color)", "Expand Segment"};
         ImGui::Text("Correction Strategy:");
@@ -44,7 +41,7 @@ public:
 
         ImGui::Separator();
 
-        ImGui::Text("Banding pair count: %d", getPixelArtImage().getError());
+        ImGui::Text("Banding Error: %d", getPixelArtImage().getError());
     }
 
     void run() override {
