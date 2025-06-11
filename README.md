@@ -10,6 +10,7 @@ This repository represents the codebase of Rares Bites' bachelor-end project (CS
 - OpenCV – Image processing
 - glm – Mathematics
 - [stb](https://github.com/nothings/stb) – Single-header libraries for image/file handling
+- [concave hull](https://github.com/senhorsolar/concavehull) – Open-source library to compute concave hulls
 
 ---
 

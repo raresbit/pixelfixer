@@ -19,6 +19,8 @@
 #include <unordered_set>
 #include <functional>
 
+#include "../../external/concavehull/src/concavehull.hpp"
+
 #include "BandingDetection.h"
 
 template<>
@@ -38,6 +40,7 @@ public:
     }
 
     void run() override {
+        // generator = std::default_random_engine{42};
         PixelArtImage &canvas = getPixelArtImage();
         int width = canvas.getWidth();
         int height = canvas.getHeight();
@@ -94,7 +97,7 @@ public:
     void renderUI() override {
         ImGui::Text("Pipeline Iterations");
         ImGui::SetNextItemWidth(-FLT_MIN);
-        ImGui::SliderInt("##Pipeline Iterations", &PIPELINE_ITERATIONS, 1, 10);
+        ImGui::DragInt("##Pipeline Iterations", &PIPELINE_ITERATIONS, 1.0f, 1, 10);
 
         ImGui::Spacing();
 
@@ -102,31 +105,33 @@ public:
         ImGui::SameLine();
         ImGui::Checkbox("##Preserve Outline", &PRESERVE_OUTLINE);
 
-        // Combo to select erosion mode
         ImGui::Text("Erosion Mode");
-        const char *erosionModes[] = {"Constant Erosion Iterations", "Linear Erosion Iterations (On Layer #)"};
+        const char *erosionModes[] = {
+            "Constant Erosion Iterations",
+            "Linear Erosion Iterations (On Layer #)"
+        };
         ImGui::SetNextItemWidth(-FLT_MIN);
         ImGui::Combo("##Erosion Mode", &erosionMode, erosionModes, IM_ARRAYSIZE(erosionModes));
 
-        // Show slider for linear erosion factor only if linear erosion is selected
         if (erosionMode == 1) {
             ImGui::Text("Linear Erosion Factor");
             ImGui::SetNextItemWidth(-FLT_MIN);
-            ImGui::SliderFloat("##LinearErosionFactor", &LINEAR_EROSION_FACTOR, 0.0f, 2.0f, "%.3f");
+            ImGui::DragFloat("##LinearErosionFactor", &LINEAR_EROSION_FACTOR, 0.01f, 0.0f, 2.0f, "%.3f");
         }
 
+        // If re-enabled later, this becomes a better fit for DragInt as well:
         // ImGui::Text("Expansion Iterations");
         // ImGui::SetNextItemWidth(-FLT_MIN);
-        // ImGui::SliderInt("##ExpansionIterations", &EXPANSION_ITERATIONS, 0, 5);
-
+        // ImGui::DragInt("##ExpansionIterations", &EXPANSION_ITERATIONS, 1.0f, 0, 5);
 
         ImGui::Text("Probability to Add Candidate Pixel");
         ImGui::SetNextItemWidth(-FLT_MIN);
-        ImGui::SliderFloat("##ProbabilityToAddPixel", &PROB_ADD_CANDIDATE_PIXEL, 0.0f, 1.0f, "%.3f");
+        ImGui::DragFloat("##ProbabilityToAddPixel", &PROB_ADD_CANDIDATE_PIXEL, 0.01f, 0.0f, 1.0f, "%.3f");
 
         ImGui::Separator();
         ImGui::Text("Error Decreased By: %d", errorImprovement);
     }
+
 
     void renderDebugUI() override {
         ImGui::Checkbox("Debug View", &showDebug);
@@ -307,7 +312,32 @@ private:
     }
 
 
-    static std::vector<std::pair<Color, cv::Mat> > extractLayers(const PixelArtImage &canvas) {
+    static void computeConcaveHull(const std::vector<cv::Point>& points, std::vector<std::vector<cv::Point>>& contours, double chi = 0.1)
+    {
+
+        // Flatten points to vector<double>
+        std::vector<double> flatCoords;
+        flatCoords.reserve(points.size() * 2);
+        for (const auto& pt : points) {
+            flatCoords.push_back(static_cast<double>(pt.x));
+            flatCoords.push_back(static_cast<double>(pt.y));
+        }
+
+        std::span<double> inputSpan(flatCoords);
+
+        // Call concave hull
+        std::vector<double> hullCoords = concavehull(inputSpan, chi);
+
+        // Convert flat output to cv::Point vector
+        std::vector<cv::Point> hull;
+        for (size_t i = 0; i + 1 < hullCoords.size(); i += 2) {
+            hull.emplace_back(static_cast<int>(std::round(hullCoords[i])), static_cast<int>(std::round(hullCoords[i + 1])));
+        }
+
+        contours = { hull };
+    }
+
+    std::vector<std::pair<Color, cv::Mat> > extractLayers(const PixelArtImage &canvas) {
         int width = canvas.getWidth();
         int height = canvas.getHeight();
 
@@ -321,44 +351,39 @@ private:
                 colorPixels[color].emplace_back(x, y);
             }
 
-        std::vector<std::pair<Color, cv::Mat> > layers;
+        // Move color pixels to vector and sort by brightness before creating masks
+        std::vector<std::pair<Color, std::vector<cv::Point>>> sortedColorPixels(
+            colorPixels.begin(), colorPixels.end());
 
-        for (auto &[color, points]: colorPixels) {
-            cv::Mat mask = cv::Mat::zeros(height, width, CV_8UC1);
-            for (const auto &pt: points)
-                mask.at<uchar>(pt.y, pt.x) = 255;
-
-            // Check number of connected components
-            cv::Mat labels;
-            int numComponents = cv::connectedComponents(mask, labels, 8);
-
-            std::vector<std::vector<cv::Point> > contours;
-            if (numComponents <= 2) {
-                cv::findContours(mask.clone(), contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
-            } else {
-                std::vector<cv::Point> rawContour;
-                for (const auto &pt: points)
-                    rawContour.emplace_back(pt.x, pt.y);
-
-                std::vector<cv::Point> hull;
-                cv::convexHull(rawContour, hull);
-                contours = {hull};
-            }
-
-            cv::Mat filledMask = cv::Mat::zeros(height, width, CV_8UC1);
-            cv::drawContours(filledMask, contours, -1, 255, cv::FILLED);
-
-
-            layers.emplace_back(color, filledMask);
-        }
-
-        // Sort layers in increasing order of brightness
-        std::ranges::sort(layers, [&](const auto &a, const auto &b) {
+        std::ranges::sort(sortedColorPixels, [&](const auto &a, const auto &b) {
             auto brightnessA = 0.2126f * a.first.r + 0.7152f * a.first.g + 0.0722f * a.first.b;
             auto brightnessB = 0.2126f * b.first.r + 0.7152f * b.first.g + 0.0722f * b.first.b;
             return brightnessA < brightnessB;
         });
 
+        std::vector<std::pair<Color, cv::Mat> > layers;
+
+        for (size_t i = 0; i < sortedColorPixels.size(); ++i) {
+            const auto &[color, points] = sortedColorPixels[i];
+
+            cv::Mat mask = cv::Mat::zeros(height, width, CV_8UC1);
+            for (const auto &pt : points)
+                mask.at<uchar>(pt.y, pt.x) = 255;
+
+            int firstLayers = PRESERVE_OUTLINE ? 2 : 1;
+            std::vector<std::vector<cv::Point>> contours;
+            cv::Mat filledMask = cv::Mat::zeros(height, width, CV_8UC1);
+            if (i < firstLayers) {
+                // Keep the original mask for the first two layers, and fill it
+                cv::findContours(mask.clone(), contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+            } else {
+                // Compute filled mask using concave hull
+                computeConcaveHull(points, contours, 0.1);
+            }
+
+            cv::drawContours(filledMask, contours, -1, 255, cv::FILLED);
+            layers.emplace_back(color, filledMask);
+        }
 
         return layers;
     }

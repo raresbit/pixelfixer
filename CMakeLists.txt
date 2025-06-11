@@ -21,6 +21,7 @@ set(PROJECT_SOURCES
         src/main.cpp
         src/PixelArtImage.cpp
         external/stb/stb.cpp
+        external/concavehull/src/concavehull.hpp
 )
 
 add_executable(PixelFixer
