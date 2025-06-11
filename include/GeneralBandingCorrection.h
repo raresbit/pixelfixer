@@ -153,6 +153,7 @@ private:
     bool alterTopEdge = true;
     bool alterBottomEdge = true;
     int operationIndex = 0;
+    std::default_random_engine generator{42}; // Seed for reproducibility
 
 
     [[nodiscard]] bool detectBanding(const std::vector<Pixel> &selectedSegment,
@@ -293,7 +294,7 @@ private:
 
     std::vector<Pixel> getReplacements(std::vector<Pixel> &segment,
                                        const std::vector<std::vector<Pixel> > &neighboringSegments,
-                                       const PixelArtImage &canvas) const {
+                                       const PixelArtImage &canvas) {
         std::vector<Pixel> replacements;
 
         if (segment.empty()) return replacements;
@@ -318,7 +319,7 @@ private:
 
     std::vector<Pixel> handleShrinkOrColorChange(std::vector<Pixel> &segment,
                                                  const std::vector<std::vector<Pixel> > &neighboringSegments,
-                                                 const PixelArtImage &canvas) const {
+                                                 const PixelArtImage &canvas) {
         std::vector<Pixel> replacements;
 
         struct EdgeOp {
@@ -346,10 +347,48 @@ private:
             };
         };
 
+        // Avoid edge case with shrink strategy on a segment of length two with
+        // both endpoint continuations of the same color; happens for avg color variant.
+
+        auto fr = segment.front();
+        auto bk = segment.back();
         if (isSegmentHorizontal(segment)) {
+            if (segment.size() == 2) {
+                auto fr_replacement = determineReplacementColor(fr.pos, canvas, fr.color, EdgeDirection::Left);
+                auto bk_replacement = determineReplacementColor(bk.pos, canvas, bk.color, EdgeDirection::Right);
+
+                if (fr_replacement == bk_replacement) {
+                    alterLeftEdge = false;
+                    alterRightEdge = false;
+                    // Pick one randomly
+                    if (generator() % 2 == 0) {
+                        alterLeftEdge = true;
+                    } else {
+                        alterRightEdge = true;
+                    }
+                }
+            }
+
             edges.push_back(prepareEdge(alterLeftEdge, true, EdgeDirection::Left));
             edges.push_back(prepareEdge(alterRightEdge, false, EdgeDirection::Right));
+
         } else {
+            if (segment.size() == 2) {
+                auto fr_replacement = determineReplacementColor(fr.pos, canvas, fr.color, EdgeDirection::Top);
+                auto bk_replacement = determineReplacementColor(bk.pos, canvas, bk.color, EdgeDirection::Bottom);
+
+                if (fr_replacement == bk_replacement) {
+                    alterTopEdge = false;
+                    alterBottomEdge = false;
+                    // Pick one randomly
+                    if (generator() % 2 == 0) {
+                        alterTopEdge = true;
+                    } else {
+                        alterBottomEdge = true;
+                    }
+                }
+            }
+
             edges.push_back(prepareEdge(alterTopEdge, true, EdgeDirection::Top));
             edges.push_back(prepareEdge(alterBottomEdge, false, EdgeDirection::Bottom));
         }
