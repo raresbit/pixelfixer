@@ -40,7 +40,8 @@ public:
     }
 
     void run() override {
-        generator = std::default_random_engine{42};
+        // Uncomment to fix the seed (removes variety: always gives the same result).
+        // generator = std::default_random_engine{42};
         PixelArtImage &canvas = getPixelArtImage();
         int width = canvas.getWidth();
         int height = canvas.getHeight();
