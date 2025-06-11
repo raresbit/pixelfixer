@@ -159,9 +159,18 @@ private:
                                      const std::vector<std::vector<Pixel> > &neighboringSegments) const {
         bool bandingDetected = false;
         auto [selStart, selEnd] = getSegmentEndpoints(selectedSegment);
+        if (selStart == selEnd) return false;
+
+        auto colorA = selectedSegment.front().color;
 
         for (const auto &neighboringSegment: neighboringSegments) {
             auto [nbStart, nbEnd] = getSegmentEndpoints(neighboringSegment);
+
+            if (nbStart == nbEnd) continue;
+
+            auto colorB = neighboringSegment.front().color;
+            if (colorB == colorA)
+                continue;
 
             auto alignmentOpt = checkEndpointAlignment(selStart, selEnd, nbStart, nbEnd);
             if (alignmentOpt.has_value()) {

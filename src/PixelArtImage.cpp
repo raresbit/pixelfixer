@@ -190,11 +190,120 @@ void PixelArtImage::clearDebugLinesWithColor(const Color &color) {
 }
 
 
-
+/**
+ * Saves the current image to a PNG file at the given filepath.
+ *
+ * If debug lines have been drawn on the canvas, the output image will be scaled by a factor of 10
+ * and the debug lines will be rendered over the scaled image. If no debug lines are present,
+ * the image is saved at its original resolution without scaling.
+ *
+ * @param filepath The destination file path for the PNG image.
+ * @return True if the file was saved successfully, false otherwise.
+ */
 bool PixelArtImage::saveToFile(const std::string &filepath) const {
     std::vector<unsigned char> rgba = getRGBAData();
+    std::vector<std::tuple<glm::vec2, glm::vec2, Color>> debugLines = getDebugLines();
+
+    if (!debugLines.empty()) {
+        const int scale = 10;
+        int scaledWidth = width * scale;
+        int scaledHeight = height * scale;
+
+        std::vector<unsigned char> scaledRGBA(scaledWidth * scaledHeight * 4, 255);
+
+        // Scale original image
+        for (int y = 0; y < height; ++y) {
+            for (int x = 0; x < width; ++x) {
+                for (int dy = 0; dy < scale; ++dy) {
+                    for (int dx = 0; dx < scale; ++dx) {
+                        int srcIndex = (y * width + x) * 4;
+                        int dstX = x * scale + dx;
+                        int dstY = y * scale + dy;
+                        int dstIndex = (dstY * scaledWidth + dstX) * 4;
+                        for (int c = 0; c < 4; ++c) {
+                            scaledRGBA[dstIndex + c] = rgba[srcIndex + c];
+                        }
+                    }
+                }
+            }
+        }
+
+        // Draw debug lines
+        auto drawLine = [&](glm::vec2 start, glm::vec2 end, const Color &color) {
+            int x0 = static_cast<int>(start.x * scale);
+            int y0 = static_cast<int>(start.y * scale);
+            int x1 = static_cast<int>(end.x * scale);
+            int y1 = static_cast<int>(end.y * scale);
+
+            // Bresenham's line algorithm
+            int dx = std::abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+            int dy = -std::abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+            int err = dx + dy;
+
+            while (true) {
+                if (x0 >= 0 && x0 < scaledWidth && y0 >= 0 && y0 < scaledHeight) {
+                    int idx = (y0 * scaledWidth + x0) * 4;
+                    scaledRGBA[idx + 0] = color.r;
+                    scaledRGBA[idx + 1] = color.g;
+                    scaledRGBA[idx + 2] = color.b;
+                    scaledRGBA[idx + 3] = 255;
+                }
+                if (x0 == x1 && y0 == y1) break;
+                int e2 = 2 * err;
+                if (e2 >= dy) { err += dy; x0 += sx; }
+                if (e2 <= dx) { err += dx; y0 += sy; }
+            }
+        };
+
+        for (const auto &line : debugLines) {
+            glm::vec2 start = std::get<0>(line);
+            glm::vec2 end = std::get<1>(line);
+            Color color = std::get<2>(line);
+
+            // Translate down by 0.5 * scale
+            start.y += 0.5f;
+            end.y += 0.5f;
+
+            // Draw a three-px width line
+            // First draw the base 1px one
+            drawLine(start, end, color);
+
+            // Determine if horizontal or vertical line (simple check)
+            bool isHorizontal = std::abs(end.y - start.y) < std::abs(end.x - start.x);
+            bool isVertical = !isHorizontal;
+
+            float offset = 1.0f / scale;  // offset by 1 pixel in image space before scaling
+
+            if (isHorizontal) {
+                // Draw one line 1px above (subtract offset in y)
+                glm::vec2 aboveStart = start; aboveStart.y -= offset;
+                glm::vec2 aboveEnd = end; aboveEnd.y -= offset;
+                drawLine(aboveStart, aboveEnd, color);
+
+                // Draw one line 1px below (add offset in y)
+                glm::vec2 belowStart = start; belowStart.y += offset;
+                glm::vec2 belowEnd = end; belowEnd.y += offset;
+                drawLine(belowStart, belowEnd, color);
+            } else if (isVertical) {
+                // Draw one line 1px left (subtract offset in x)
+                glm::vec2 leftStart = start; leftStart.x -= offset;
+                glm::vec2 leftEnd = end; leftEnd.x -= offset;
+                drawLine(leftStart, leftEnd, color);
+
+                // Draw one line 1px right (add offset in x)
+                glm::vec2 rightStart = start; rightStart.x += offset;
+                glm::vec2 rightEnd = end; rightEnd.x += offset;
+                drawLine(rightStart, rightEnd, color);
+            }
+
+        }
+
+        return stbi_write_png(filepath.c_str(), scaledWidth, scaledHeight, 4, scaledRGBA.data(), scaledWidth * 4) != 0;
+    }
+
     return stbi_write_png(filepath.c_str(), width, height, 4, rgba.data(), width * 4) != 0;
 }
+
 
 
 std::vector<std::vector<std::vector<Pixel> > > PixelArtImage::segmentClusters(bool horizontalOrientation) {

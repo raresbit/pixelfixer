@@ -37,14 +37,21 @@ public:
         getPixelArtImage().clearDebugLines();
 
         // Both
-        std::vector<std::pair<std::vector<Pixel>, std::vector<Pixel>>> affectedSegmentPairs;
+        std::vector<std::pair<std::vector<Pixel>, std::vector<Pixel>>> horizontalAffectedSegmentPairs;
         getPixelArtImage().segmentClusters(true);
         auto newPairs = runDetection(true);
-        affectedSegmentPairs.insert(affectedSegmentPairs.end(), newPairs.begin(), newPairs.end());
+        horizontalAffectedSegmentPairs.insert(horizontalAffectedSegmentPairs.end(), newPairs.begin(), newPairs.end());
 
+        std::vector<std::pair<std::vector<Pixel>, std::vector<Pixel>>> verticalAffectedSegmentPairs;
         getPixelArtImage().segmentClusters(false);
         newPairs = runDetection(false);
-        affectedSegmentPairs.insert(affectedSegmentPairs.end(), newPairs.begin(), newPairs.end());
+        verticalAffectedSegmentPairs.insert(verticalAffectedSegmentPairs.end(), newPairs.begin(), newPairs.end());
+
+
+        // Draw rectangles around groups of consecutive banding segments
+        drawGroupedRectangles(horizontalAffectedSegmentPairs, true);
+        drawGroupedRectangles(verticalAffectedSegmentPairs, false);
+
 
         // Save unique segments
         struct SegmentHash {
@@ -69,6 +76,10 @@ public:
 
         std::unordered_set<std::vector<Pixel>, SegmentHash, SegmentEqual> seen;
         std::vector<std::vector<Pixel>> flattened;
+
+        std::vector<std::pair<std::vector<Pixel>, std::vector<Pixel>>> affectedSegmentPairs;
+        affectedSegmentPairs.insert(affectedSegmentPairs.end(), horizontalAffectedSegmentPairs.begin(), horizontalAffectedSegmentPairs.end());
+        affectedSegmentPairs.insert(affectedSegmentPairs.end(), verticalAffectedSegmentPairs.begin(), verticalAffectedSegmentPairs.end());
 
         for (const auto& pair : affectedSegmentPairs) {
             const auto& segA = pair.first;
@@ -158,19 +169,19 @@ private:
                                         error++;
                                         countedPairs.insert(pairKey);
 
-                                        Color red(255, 0, 0);
-                                        for (const auto &px: segmentA) {
-                                            Pixel redPixel = px;
-                                            redPixel.color = red;
-                                        }
-                                        for (const auto &px: segmentB) {
-                                            Pixel redPixel = px;
-                                            redPixel.color = red;
-                                        }
+                                        // Color red(255, 0, 0);
+                                        // for (const auto &px: segmentA) {
+                                        //     Pixel redPixel = px;
+                                        //     redPixel.color = red;
+                                        // }
+                                        // for (const auto &px: segmentB) {
+                                        //     Pixel redPixel = px;
+                                        //     redPixel.color = red;
+                                        // }
 
                                         std::vector<Pixel> combined = segmentA;
                                         combined.insert(combined.end(), segmentB.begin(), segmentB.end());
-                                        canvas.drawRectangle(combined, red);
+                                        // canvas.drawRectangle(combined, red);
 
                                         affectedSegmentPairs.emplace_back(segmentA, segmentB);
 
@@ -246,6 +257,62 @@ private:
         // If no endpoint aligned, no match
         return std::nullopt;
     }
+
+    void drawGroupedRectangles(std::vector<std::pair<std::vector<Pixel>, std::vector<Pixel>>> &segmentPairs, bool horizontal) {
+        Color red(255, 0, 0);
+
+        std::vector<std::vector<Pixel>> allSegments;
+        for (auto &pair : segmentPairs) {
+            allSegments.push_back(pair.first);
+            allSegments.push_back(pair.second);
+        }
+
+        std::vector<bool> visited(allSegments.size(), false);
+        std::vector<std::vector<std::vector<Pixel>>> groupedSegments;
+
+        for (size_t i = 0; i < allSegments.size(); ++i) {
+            if (visited[i]) continue;
+
+            std::vector<std::vector<Pixel>> group;
+            group.push_back(allSegments[i]);
+            visited[i] = true;
+
+            bool added = true;
+            while (added) {
+                added = false;
+                for (size_t j = 0; j < allSegments.size(); ++j) {
+                    if (visited[j]) continue;
+
+                    for (const auto& seg : group) {
+                        const auto& a = seg.front().pos;
+                        const auto& b = allSegments[j].front().pos;
+
+                        bool isConsecutive = horizontal
+                            ? (std::abs(a.y - b.y) == 1 && a.x == b.x)
+                            : (std::abs(a.x - b.x) == 1 && a.y == b.y);
+
+                        if (isConsecutive) {
+                            group.push_back(allSegments[j]);
+                            visited[j] = true;
+                            added = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            groupedSegments.push_back(group);
+        }
+
+        for (const auto &group : groupedSegments) {
+            std::vector<Pixel> combined;
+            for (const auto &seg : group) {
+                combined.insert(combined.end(), seg.begin(), seg.end());
+            }
+            getPixelArtImage().drawRectangle(combined, red);
+        }
+    }
+
 };
 
 #endif // BANDINGDETECTION_H
