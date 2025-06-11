@@ -287,9 +287,24 @@ private:
                         const auto& a = seg.front().pos;
                         const auto& b = allSegments[j].front().pos;
 
-                        bool isConsecutive = horizontal
-                            ? (std::abs(a.y - b.y) == 1 && a.x == b.x)
-                            : (std::abs(a.x - b.x) == 1 && a.y == b.y);
+                        const auto& aStart = seg.front().pos;
+                        const auto& aEnd = seg.back().pos;
+                        const auto& bStart = allSegments[j].front().pos;
+                        const auto& bEnd = allSegments[j].back().pos;
+
+                        bool isConsecutive = false;
+
+                        if (horizontal) {
+                            // Consecutive segments must have y differ by 1 and matching x coordinates for both ends
+                            bool yDiff = std::abs(aStart.y - bStart.y) == 1 && std::abs(aEnd.y - bEnd.y) == 1;
+                            bool xMatch = (aStart.x == bStart.x) && (aEnd.x == bEnd.x);
+                            isConsecutive = yDiff && xMatch;
+                        } else {
+                            // Consecutive segments must have x differ by 1 and matching y coordinates for both ends
+                            bool xDiff = std::abs(aStart.x - bStart.x) == 1 && std::abs(aEnd.x - bEnd.x) == 1;
+                            bool yMatch = (aStart.y == bStart.y) && (aEnd.y == bEnd.y);
+                            isConsecutive = xDiff && yMatch;
+                        }
 
                         if (isConsecutive) {
                             group.push_back(allSegments[j]);
