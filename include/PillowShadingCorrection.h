@@ -40,7 +40,7 @@ public:
     }
 
     void run() override {
-        // generator = std::default_random_engine{42};
+        generator = std::default_random_engine{42};
         PixelArtImage &canvas = getPixelArtImage();
         int width = canvas.getWidth();
         int height = canvas.getHeight();
@@ -312,30 +312,72 @@ private:
     }
 
 
-    static void computeConcaveHull(const std::vector<cv::Point>& points, std::vector<std::vector<cv::Point>>& contours, double chi = 0.1)
-    {
+    static bool arePointsCollinear(const std::vector<cv::Point> &pts) {
+        if (pts.size() < 3) return true;
+        // Check if all points lie on the line defined by first two points
+        const auto &p0 = pts[0];
+        const auto &p1 = pts[1];
+        for (size_t i = 2; i < pts.size(); ++i) {
+            const auto &p = pts[i];
+            // cross product zero means collinear
+            int cross = (p1.x - p0.x) * (p.y - p0.y) - (p1.y - p0.y) * (p.x - p0.x);
+            if (cross != 0) return false;
+        }
+        return true;
+    }
+
+    static void computeConcaveHull(const std::vector<cv::Point> &points, std::vector<std::vector<cv::Point> > &contours,
+                                   double chi = 0.1) {
+        // Remove duplicates
+        std::vector<cv::Point> pts(points.begin(), points.end());
+
+        // Check for minimum number of points
+        if (pts.size() < 3) {
+            // Not enough points for hull: return input as a single contour or empty contour
+            contours = {pts};
+            return;
+        }
+
+        // Check if points are collinear
+        if (arePointsCollinear(pts)) {
+            // Collinear points can't form a polygon hull; return convex hull or line segment
+            contours = {pts};
+            return;
+        }
+
+        // Clamp chi to [0,1]
+        if (chi < 0.0) chi = 0.0;
+        else if (chi > 1.0) chi = 1.0;
 
         // Flatten points to vector<double>
         std::vector<double> flatCoords;
-        flatCoords.reserve(points.size() * 2);
-        for (const auto& pt : points) {
+        flatCoords.reserve(pts.size() * 2);
+        for (const auto &pt: pts) {
             flatCoords.push_back(static_cast<double>(pt.x));
             flatCoords.push_back(static_cast<double>(pt.y));
         }
 
         std::span<double> inputSpan(flatCoords);
 
-        // Call concave hull
-        std::vector<double> hullCoords = concavehull(inputSpan, chi);
+        // Call concave hull (may still throw internally if triangulation fails)
+        try {
+            std::vector<double> hullCoords = concavehull(inputSpan, chi);
 
-        // Convert flat output to cv::Point vector
-        std::vector<cv::Point> hull;
-        for (size_t i = 0; i + 1 < hullCoords.size(); i += 2) {
-            hull.emplace_back(static_cast<int>(std::round(hullCoords[i])), static_cast<int>(std::round(hullCoords[i + 1])));
+            // Convert flat output to cv::Point vector
+            std::vector<cv::Point> hull;
+            for (size_t i = 0; i + 1 < hullCoords.size(); i += 2) {
+                hull.emplace_back(static_cast<int>(std::round(hullCoords[i])),
+                                  static_cast<int>(std::round(hullCoords[i + 1])));
+            }
+
+            contours = {hull};
+        } catch (...) {
+            // Fallback on the input points to avoid program crashing
+            contours = { std::vector(points) };
         }
 
-        contours = { hull };
     }
+
 
     std::vector<std::pair<Color, cv::Mat> > extractLayers(const PixelArtImage &canvas) {
         int width = canvas.getWidth();
@@ -352,7 +394,7 @@ private:
             }
 
         // Move color pixels to vector and sort by brightness before creating masks
-        std::vector<std::pair<Color, std::vector<cv::Point>>> sortedColorPixels(
+        std::vector<std::pair<Color, std::vector<cv::Point> > > sortedColorPixels(
             colorPixels.begin(), colorPixels.end());
 
         std::ranges::sort(sortedColorPixels, [&](const auto &a, const auto &b) {
@@ -367,11 +409,11 @@ private:
             const auto &[color, points] = sortedColorPixels[i];
 
             cv::Mat mask = cv::Mat::zeros(height, width, CV_8UC1);
-            for (const auto &pt : points)
+            for (const auto &pt: points)
                 mask.at<uchar>(pt.y, pt.x) = 255;
 
             int firstLayers = PRESERVE_OUTLINE ? 2 : 1;
-            std::vector<std::vector<cv::Point>> contours;
+            std::vector<std::vector<cv::Point> > contours;
             cv::Mat filledMask = cv::Mat::zeros(height, width, CV_8UC1);
             if (i < firstLayers) {
                 // Keep the original mask for the first two layers, and fill it
@@ -429,7 +471,7 @@ private:
             }
 
             // First pass: probabilistic addition
-            std::unordered_set<std::pair<int, int>> addedPixels;
+            std::unordered_set<std::pair<int, int> > addedPixels;
             std::uniform_real_distribution dist(0.0, 1.0);
 
             for (const auto &[pt, count]: candidate_counts) {
@@ -456,21 +498,21 @@ private:
 
             // Extract contour and neighbors of "dilated"
             std::vector<std::pair<int, int> > neighbors_4 = {
-                        {-1, 0},
-                {0, -1},    {0, 1},
-                        {1, 0},
+                {-1, 0},
+                {0, -1}, {0, 1},
+                {1, 0},
             };
 
-            std::set<std::pair<int, int>> contour;
-            std::set<std::pair<int, int>> neighbors;
+            std::set<std::pair<int, int> > contour;
+            std::set<std::pair<int, int> > neighbors;
 
             for (int y = 1; y < dilated.rows - 1; ++y) {
                 for (int x = 1; x < dilated.cols - 1; ++x) {
                     if (dilated.at<uchar>(y, x) > 0) {
                         for (const auto &[dx, dy]: neighbors_4) {
-                            if (dilated.at<uchar>(y+dy, x+dx) == 0) {
+                            if (dilated.at<uchar>(y + dy, x + dx) == 0) {
                                 contour.insert(std::pair(x, y));
-                                neighbors.insert(std::pair(x+dx, y+dy));
+                                neighbors.insert(std::pair(x + dx, y + dy));
                             }
                         }
                     }
@@ -487,14 +529,14 @@ private:
             // And also while ensuring those added pixels are part of the neighbors set; once we find one not part
             // of the neighbor set, you can directly "continue" the loop, not adding any of those pixels at all
             // The point is that this technique would close "vertical/horizontal" gaps in contours
-            for (const auto &[x, y] : contour) {
-                for (const auto &[dx, dy] : neighbors_4) {
+            for (const auto &[x, y]: contour) {
+                for (const auto &[dx, dy]: neighbors_4) {
                     int nx = x + dx;
                     int ny = y + dy;
 
                     // If neighbor is not part of contour, consider it a direction to try
                     if (!contour.contains({nx, ny})) {
-                        std::vector<std::pair<int, int>> to_add;
+                        std::vector<std::pair<int, int> > to_add;
                         int cx = nx;
                         int cy = ny;
 
@@ -522,7 +564,7 @@ private:
 
                         // If we ended because of a contour pixel, it's a valid bridge
                         if (contour.contains({cx, cy})) {
-                            for (const auto &[px, py] : to_add) {
+                            for (const auto &[px, py]: to_add) {
                                 dilated.at<uchar>(py, px) = 255;
                                 out_candidate_neighbors->insert({px, py});
                             }
@@ -534,7 +576,6 @@ private:
             for (const auto &pt: contour) {
                 out_candidate_neighbors->insert(pt);
             }
-
         }
 
         // Final result: union of original shape and dilated result
