@@ -32,11 +32,9 @@ public:
         ImGui::Combo("##Operation", &operationIndex, operations, IM_ARRAYSIZE(operations));
 
         ImGui::Text("Segment Endpoints To Alter:");
-        ImGui::Checkbox("Left/Top", &alterLeftEdge);
-        alterTopEdge = alterLeftEdge;
+        ImGui::Checkbox("Left/Top", &alterLeftOrTopEdge);
         ImGui::SameLine();
-        ImGui::Checkbox("Right/Bottom", &alterRightEdge);
-        alterBottomEdge = alterRightEdge;
+        ImGui::Checkbox("Right/Bottom", &alterRightOrBottomEdge);
 
 
         ImGui::Separator();
@@ -45,36 +43,47 @@ public:
     }
 
     void run() override {
+        // Uncomment to fix the seed (removes variety: always gives the same result).
+        generator = std::default_random_engine{42};
+
         PixelArtImage &image = getPixelArtImage();
 
         auto allClusters = image.getClusters();
         auto selectedSegment = image.getSelectedSegment();
 
         if (selectedSegment.empty()) {
+            bool cLeftOrTop = alterLeftOrTopEdge;
+            bool cRightOrBottom = alterRightOrBottomEdge;
             // Run the algorithm on all segments until banding error converges
             auto detection = std::make_unique<BandingDetection>(image);
-            std::vector<std::vector<Pixel> > affectedSegments = detection->bandingDetection().second;
 
-            while (!affectedSegments.empty()) {
+            auto bandingPairs = std::get<2>(detection->bandingDetection());
+
+            while (!bandingPairs.empty()) {
                 // Select the first affected segment
-                for (const auto& affectedSegment: affectedSegments) {
+                for (const auto& pair: bandingPairs) {
+                    const auto &seg1 = pair.first;
+                    const auto &seg2 = pair.second;
 
-                    // Determine orientation of the selected segment (horizontal or vertical)
-                    // by checking bounding box dimensions
-                    int minX = std::numeric_limits<int>::max();
-                    int maxX = std::numeric_limits<int>::min();
-                    int minY = std::numeric_limits<int>::max();
-                    int maxY = std::numeric_limits<int>::min();
+                    // Pick either rightmost segment (if vertical) or bottom segment (if horizontal)
+                    // This propagates the error all the way to the bottom right corner,
+                    // Ensuring that the loop ends eventually
+                    std::vector<Pixel> affectedSegment;
+                    bool horizontal = isSegmentHorizontal(seg1);
 
-                    for (const Pixel &px: affectedSegment) {
-                        if (px.pos.x < minX) minX = px.pos.x;
-                        if (px.pos.x > maxX) maxX = px.pos.x;
-                        if (px.pos.y < minY) minY = px.pos.y;
-                        if (px.pos.y > maxY) maxY = px.pos.y;
+                    if (horizontal) {
+                        if (seg1.front().pos.x > seg2.front().pos.x) {
+                            affectedSegment = seg1;
+                        } else {
+                            affectedSegment = seg2;
+                        }
+                    } else {
+                        if (seg1.front().pos.y > seg2.front().pos.y) {
+                            affectedSegment = seg1;
+                        } else {
+                            affectedSegment = seg2;
+                        }
                     }
-
-                    // Horizontal if width > height, else vertical
-                    bool horizontal = (maxX - minX) >= (maxY - minY);
 
                     image.segmentClusters(horizontal);
                     allClusters = image.getClusters();
@@ -109,11 +118,15 @@ public:
 
                     // Apply banding correction
                     image.setPixels(getReplacements(selectedSegment, neighboringSegments, image));
+
+                    // Reset parameters
+                    alterLeftOrTopEdge = cLeftOrTop;
+                    alterRightOrBottomEdge = cRightOrBottom;
                 }
                 detection = std::make_unique<BandingDetection>(image);
-                auto [err, aff] = detection->bandingDetection();
+                auto [err, aff, _] = detection->bandingDetection();
                 image.setError(err);
-                affectedSegments = aff;
+                bandingPairs = std::get<2>(detection->bandingDetection());
             }
         } else {
 
@@ -134,8 +147,8 @@ public:
 
         // Final cleanup
         auto detection = std::make_unique<BandingDetection>(originalCanvas);
-        image.setAffectedSegments(detection->bandingDetection().second);
-        image.setError(detection->bandingDetection().first);
+        image.setAffectedSegments(std::get<1>(detection->bandingDetection()));
+        image.setError(std::get<0>(detection->bandingDetection()));
         image.clearSelectedSegment();
         image.clearHighlightedPixels();
     }
@@ -148,10 +161,8 @@ public:
 
 private:
     PixelArtImage originalCanvas = PixelArtImage(0, 0);
-    bool alterLeftEdge = true;
-    bool alterRightEdge = true;
-    bool alterTopEdge = true;
-    bool alterBottomEdge = true;
+    bool alterLeftOrTopEdge = true;
+    bool alterRightOrBottomEdge = true;
     int operationIndex = 0;
     std::default_random_engine generator{42}; // Seed for reproducibility
 
@@ -358,19 +369,19 @@ private:
                 auto bk_replacement = determineReplacementColor(bk.pos, canvas, bk.color, EdgeDirection::Right);
 
                 if (fr_replacement == bk_replacement) {
-                    alterLeftEdge = false;
-                    alterRightEdge = false;
+                    alterLeftOrTopEdge = false;
+                    alterRightOrBottomEdge = false;
                     // Pick one randomly
                     if (generator() % 2 == 0) {
-                        alterLeftEdge = true;
+                        alterLeftOrTopEdge = true;
                     } else {
-                        alterRightEdge = true;
+                        alterRightOrBottomEdge = true;
                     }
                 }
             }
 
-            edges.push_back(prepareEdge(alterLeftEdge, true, EdgeDirection::Left));
-            edges.push_back(prepareEdge(alterRightEdge, false, EdgeDirection::Right));
+            edges.push_back(prepareEdge(alterLeftOrTopEdge, true, EdgeDirection::Left));
+            edges.push_back(prepareEdge(alterRightOrBottomEdge, false, EdgeDirection::Right));
 
         } else {
             if (segment.size() == 2) {
@@ -378,19 +389,19 @@ private:
                 auto bk_replacement = determineReplacementColor(bk.pos, canvas, bk.color, EdgeDirection::Bottom);
 
                 if (fr_replacement == bk_replacement) {
-                    alterTopEdge = false;
-                    alterBottomEdge = false;
+                    alterLeftOrTopEdge = false;
+                    alterRightOrBottomEdge = false;
                     // Pick one randomly
                     if (generator() % 2 == 0) {
-                        alterTopEdge = true;
+                        alterLeftOrTopEdge = true;
                     } else {
-                        alterBottomEdge = true;
+                        alterRightOrBottomEdge = true;
                     }
                 }
             }
 
-            edges.push_back(prepareEdge(alterTopEdge, true, EdgeDirection::Top));
-            edges.push_back(prepareEdge(alterBottomEdge, false, EdgeDirection::Bottom));
+            edges.push_back(prepareEdge(alterLeftOrTopEdge, true, EdgeDirection::Top));
+            edges.push_back(prepareEdge(alterRightOrBottomEdge, false, EdgeDirection::Bottom));
         }
 
         auto applyEdge = [&](const EdgeOp &e) {
@@ -452,11 +463,11 @@ private:
         std::vector<ExpandOp> ops;
 
         if (isSegmentHorizontal(segment)) {
-            if (alterLeftEdge) ops.push_back({true, -1, 0, true});
-            if (alterRightEdge) ops.push_back({true, 1, 0, false});
+            if (alterLeftOrTopEdge) ops.push_back({true, -1, 0, true});
+            if (alterRightOrBottomEdge) ops.push_back({true, 1, 0, false});
         } else {
-            if (alterTopEdge) ops.push_back({true, 0, -1, true});
-            if (alterBottomEdge) ops.push_back({true, 0, 1, false});
+            if (alterLeftOrTopEdge) ops.push_back({true, 0, -1, true});
+            if (alterRightOrBottomEdge) ops.push_back({true, 0, 1, false});
         }
 
         auto applyOp = [&](const ExpandOp &op) {

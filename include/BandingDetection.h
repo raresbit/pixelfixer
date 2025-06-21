@@ -25,7 +25,22 @@ public:
         return "Banding Detection";
     }
 
-    std::pair<int, std::vector<std::vector<Pixel>>> bandingDetection() {
+    /**
+     * Performs banding detection on a pixel art image by analyzing both horizontal
+     * and vertical segments in the image to identify and group consecutive areas
+     * prone to banding artifacts.
+     *
+     * The method processes the image to determine affected segment pairs,
+     * groups consecutive banding segments into rectangular bounds, and aggregates
+     * unique affected segments for further usage.
+     *
+     * @return A tuple containing:
+     *         - An integer error value representing the banding error of the image.
+     *         - A vector of unique pixel segments affected by banding (a flattened list of all banding pairs)
+     *         - A vector of pairs where each pair represents a pair of banding pixel segments;
+     *         the list is sorted to have all horizontal segments first, and then all vertical ones
+     */
+    std::tuple<int, std::vector<std::vector<Pixel>>, std::vector<std::pair<std::vector<Pixel>, std::vector<Pixel>>>> bandingDetection() {
         for (int i = 0; i < getPixelArtImage().getWidth(); i++) {
             for (int j = 0; j < getPixelArtImage().getHeight(); j++) {
                 getPixelArtImage().setPixel({i, j}, getPixelArtImage().getPixel({i, j}).color);
@@ -93,9 +108,7 @@ public:
             }
         }
 
-        affectedSegmentPairs.clear();  // Clear previous results
-
-        return std::pair{error, flattened};
+        return std::tuple{error, flattened, affectedSegmentPairs};
     }
 
 
@@ -258,7 +271,7 @@ private:
         return std::nullopt;
     }
 
-    void drawGroupedRectangles(std::vector<std::pair<std::vector<Pixel>, std::vector<Pixel>>> &segmentPairs, bool horizontal) {
+    void drawGroupedRectangles(const std::vector<std::pair<std::vector<Pixel>, std::vector<Pixel>>> &segmentPairs, bool horizontal) const {
         Color red(255, 0, 0);
 
         std::vector<std::vector<Pixel>> allSegments;
@@ -284,9 +297,6 @@ private:
                     if (visited[j]) continue;
 
                     for (const auto& seg : group) {
-                        const auto& a = seg.front().pos;
-                        const auto& b = allSegments[j].front().pos;
-
                         const auto& aStart = seg.front().pos;
                         const auto& aEnd = seg.back().pos;
                         const auto& bStart = allSegments[j].front().pos;

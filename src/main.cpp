@@ -352,7 +352,7 @@ void renderCanvas(int mode, const std::string &selectedImage, GLuint &canvasText
             }
 
             auto detection = std::make_unique<BandingDetection>(canvas);
-            auto [err, affected] = detection->bandingDetection();
+            auto [err, affected, _] = detection->bandingDetection();
             canvas.setAffectedSegments(affected);
             canvas.setError(err);
             canvas.clearDebugLines();
@@ -471,7 +471,7 @@ void renderCanvas(int mode, const std::string &selectedImage, GLuint &canvasText
                 // }
 
                 auto detection = std::make_unique<BandingDetection>(canvas);
-                auto [err, affected] = detection->bandingDetection();
+                auto [err, affected, _] = detection->bandingDetection();
                 canvas.setAffectedSegments(affected);
                 canvas.setError(err);
 

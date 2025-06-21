@@ -65,7 +65,7 @@ public:
             constructCorrectedCanvas(width, height, layers, correctedCanvas);
 
             auto detection = std::make_unique<BandingDetection>(correctedCanvas);
-            auto newError = detection->bandingDetection().first;
+            auto newError = std::get<0>(detection->bandingDetection());
 
             if (newError < error) {
                 bestCorrectedCanvas = correctedCanvas;
@@ -74,7 +74,7 @@ public:
         }
 
         auto detection = std::make_unique<BandingDetection>(canvas);
-        auto originalError = detection->bandingDetection().first;
+        auto originalError = std::get<0>(detection->bandingDetection());
 
         errorImprovement = originalError - error;
 
