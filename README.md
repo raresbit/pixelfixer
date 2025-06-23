@@ -1,7 +1,10 @@
 # CSE3000 Research Project: Pixel Art 2.0 (Pixel Fixer)
 
 ## Project Info
-This repository represents the codebase of Rares Bites' bachelor-end project (CSE3000). It accompanies the bachelor thesis, aimed at creating techniques for correcting banding and pillow-shading in Pixel Art.
+This codebase is part of my [Research Project (CSE3000)](https://github.com/TU-Delft-CSE/Research-Project), the bachelor-end project of [Delft University of Technology](https://https//github.com/TU-Delft-CSE). It accompanies my bachelor thesis, aimed at creating techniques for correcting banding and pillow-shading in pixel art.
+
+- **Name**: Rares Bites
+- **Email**: bitesrares "at" gmail "dot" com
 
 ### Libraries Used
 - [Dear ImGui](https://github.com/ocornut/imgui) – GUI
@@ -11,14 +14,6 @@ This repository represents the codebase of Rares Bites' bachelor-end project (CS
 - glm – Mathematics
 - [stb](https://github.com/nothings/stb) – Single-header libraries for image/file handling
 - [concave hull](https://github.com/senhorsolar/concavehull) – Open-source library to compute concave hulls
-
----
-
-## Author
-- **Name**: Rares Bites
-- **Email**: bitesrares "at" gmail "dot" com
-- **University**: Delft University of Technology
-- **Course**: CSE3000 Research Project
 
 ---
 
