@@ -1,4 +1,4 @@
-# CSE3000 Research Project: Pixel Art 2.0 (Pixel Fixer)
+# Pixel Fixer
 
 ## Project Info
 This codebase is part of my [Research Project (CSE3000)](https://github.com/TU-Delft-CSE/Research-Project), the bachelor-end project of [Delft University of Technology](https://https//github.com/TU-Delft-CSE). It accompanies my bachelor thesis, aimed at creating techniques for correcting banding and pillow-shading in pixel art.
